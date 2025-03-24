@@ -112,6 +112,29 @@ def login():
         "username": username
     }), 200
 
+from flask import abort
+
+@app.before_request
+def check_json():
+    if request.method in ['POST', 'PUT']:
+        if not request.is_json:
+            abort(415, "Request must be JSON")
+
+
+@app.errorhandler(422)
+def handle_unprocessable(err):
+    return jsonify({
+        "error": "Validation Error",
+        "message": "Request data validation failed"
+    }), 422
+
+@app.errorhandler(400)
+def handle_bad_request(err):
+    return jsonify({
+        "error": "Bad Request",
+        "message": str(err)
+    }), 400
+
 @app.route('/process', methods=['POST'])
 @jwt_required()
 def process_request():
