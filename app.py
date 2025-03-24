@@ -16,7 +16,7 @@ app = Flask(__name__)
 CORS(app, resources={
     r"/process": {
         "origins": [
-            "https://chatbot-frontend-dxck.onrender.com",
+            "https://chatbot-login.onrender.com",
             "http://localhost:5173"
         ],
         "methods": ["POST", "OPTIONS"],
