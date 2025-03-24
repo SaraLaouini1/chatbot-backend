@@ -1,44 +1,105 @@
+# Updated app.py with authentication
 from flask import Flask, request, jsonify
 from anonymization import anonymize_text
 from llm_client import send_to_llm
 import json
-
 from flask_cors import CORS
 from dotenv import load_dotenv
 import os
 import re
+from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
+from flask_jwt_extended import (
+    JWTManager,
+    create_access_token,
+    jwt_required,
+    get_jwt_identity
+)
+import bcrypt
 
 load_dotenv()
 
 app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///site.db')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'super-secret-key')
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 3600  # 1 hour expiration
 
+# Initialize extensions
+db = SQLAlchemy(app)
+migrate = Migrate(app, db)
+jwt = JWTManager(app)
 CORS(app, resources={
-    r"/process": {
+    r"/*": {
         "origins": [
             "https://chatbot-login.onrender.com",
             "http://localhost:5173"
         ],
-        "methods": ["POST", "OPTIONS"],
-        "allow_headers": ["Content-Type"]
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": True
     }
 })
 
-@app.before_request
-def log_request_info():
-    app.logger.debug('Headers: %s', request.headers)
-    app.logger.debug('Body: %s', request.get_data())
+# User Model
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password_hash = db.Column(db.String(120), nullable=False)
 
-@app.route('/')
-def health_check():
-    return jsonify({"status": "active"}), 200
+    def set_password(self, password):
+        self.password_hash = bcrypt.hashpw(
+            password.encode('utf-8'), 
+            bcrypt.gensalt()
+        ).decode('utf-8')
 
-@app.route('/process', methods=['GET'])
-def handle_get():
-    return jsonify({"error": "Use POST method"}), 405
+    def check_password(self, password):
+        return bcrypt.checkpw(
+            password.encode('utf-8'), 
+            self.password_hash.encode('utf-8')
+        )
+
+# Auth Routes
+@app.route('/register', methods=['POST'])
+def register():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+
+    if not username or not password:
+        return jsonify({"error": "Username and password required"}), 400
+
+    if User.query.filter_by(username=username).first():
+        return jsonify({"error": "Username already exists"}), 400
+
+    user = User(username=username)
+    user.set_password(password)
+    db.session.add(user)
+    db.session.commit()
+
+    return jsonify({"message": "User created successfully"}), 201
+
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+
+    user = User.query.filter_by(username=username).first()
+
+    if not user or not user.check_password(password):
+        return jsonify({"error": "Invalid credentials"}), 401
+
+    access_token = create_access_token(identity=username)
+    return jsonify(access_token=access_token), 200
 
 @app.route('/process', methods=['POST'])
+@jwt_required()
+
 def process_request():
     try:
+        current_user = get_jwt_identity()
+        
         data = request.json
         original_prompt = data.get("prompt", "")
 
