@@ -32,6 +32,9 @@ app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 3600  # 1 hour expiration
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 jwt = JWTManager(app)
+
+CORS(app)  # Add this as a fallback
+
 CORS(app, resources={
     r"/*": {
         "origins": [
