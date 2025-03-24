@@ -65,6 +65,14 @@ class User(db.Model):
             self.password_hash.encode('utf-8')
         )
 
+
+@app.route('/verify', methods=['GET'])
+@jwt_required()
+def verify_token():
+    current_user = get_jwt_identity()
+    return jsonify({"username": current_user}), 200
+
+
 # Auth Routes
 @app.route('/register', methods=['POST'])
 def register():
