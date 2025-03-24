@@ -1,6 +1,1 @@
-# Exclude all migrations except the versioned ones
-migrations/
-!migrations/versions/
-!migrations/alembic.ini
-!migrations/env.py
-!migrations/script.py.mako
+".env"
