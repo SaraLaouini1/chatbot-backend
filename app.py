@@ -35,11 +35,16 @@ jwt = JWTManager(app)
 
 CORS(app)  # Add this as a fallback
 
+
+
 CORS(app, resources={
-    r"/*": {
-        "origins": "*",  # Temporary wildcard for debugging
+    r"/process": {
+        "origins": [
+            "https://chatbot-frontend-dxck.onrender.com",
+            "http://localhost:5173"
+        ],
         "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["*"],
+        "allow_headers": ["Content-Type"],
         "supports_credentials": True
     }
 })
