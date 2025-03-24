@@ -139,20 +139,25 @@ def handle_bad_request(err):
 @jwt_required()
 def process_request():
     try:
-        current_user = get_jwt_identity()
-        
-        # Use get_json with proper error handling
-        data = request.get_json(force=True, silent=True)
-        if not data:
-            return jsonify({"error": "Invalid JSON format"}), 400
+        # Add request validation
+        if not request.is_json:
+            return jsonify({"error": "Request must be JSON"}), 415
             
-        original_prompt = data.get("prompt", "")
+        data = request.get_json()
+        original_prompt = data.get("prompt")
         
-        # Add empty prompt validation
-        if not original_prompt.strip():
+        # Enhanced validation
+        if not isinstance(original_prompt, str):
+            return jsonify({"error": "Prompt must be a string"}), 422
+            
+        if len(original_prompt.strip()) < 1:
             return jsonify({"error": "Prompt cannot be empty"}), 400
 
-        # ... rest of your existing process code ...
+        # Add debug logging
+        print(f"Processing prompt: {original_prompt}")
+        print(f"Headers: {dict(request.headers)}")
+
+        # ... rest of your existing code ...
 
         # 🔹 Step 1: Anonymization
         anonymized_prompt, mapping = anonymize_text(original_prompt)
