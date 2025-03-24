@@ -12,3 +12,4 @@ flask-sqlalchemy
 flask-migrate
 flask-jwt-extended
 bcrypt
+psycopg2-binary
