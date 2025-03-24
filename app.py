@@ -114,13 +114,22 @@ def login():
 
 @app.route('/process', methods=['POST'])
 @jwt_required()
-
 def process_request():
     try:
         current_user = get_jwt_identity()
         
-        data = request.json
+        # Use get_json with proper error handling
+        data = request.get_json(force=True, silent=True)
+        if not data:
+            return jsonify({"error": "Invalid JSON format"}), 400
+            
         original_prompt = data.get("prompt", "")
+        
+        # Add empty prompt validation
+        if not original_prompt.strip():
+            return jsonify({"error": "Prompt cannot be empty"}), 400
+
+        # ... rest of your existing process code ...
 
         # 🔹 Step 1: Anonymization
         anonymized_prompt, mapping = anonymize_text(original_prompt)
