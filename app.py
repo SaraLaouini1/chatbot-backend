@@ -135,6 +135,9 @@ def handle_bad_request(err):
 @jwt_required()
 def process_request():
     try:
+        print(f"Raw request data: {request.data}")  # Add this line
+        print(f"Parsed JSON: {request.get_json()}")  # Add this line
+        
         # Add request validation
         if not request.is_json:
             return jsonify({"error": "Request must be JSON"}), 415
