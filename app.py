@@ -77,7 +77,7 @@ def process_request():
         llm_final_response  = re.sub(r'<\w+_\d+>', '', llm_after_recontext)
 
         # ✅ Final debug print of cleaned response
-        print("\n📌 **Final Response (After Cleaning):**\n", llm_response)
+        print("\n📌 **Final Response (After Cleaning):**\n", llm_final_response)
 
         # 🔹 Step 4: Return response
         return jsonify({
