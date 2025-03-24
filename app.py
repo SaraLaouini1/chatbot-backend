@@ -37,14 +37,10 @@ CORS(app)  # Add this as a fallback
 
 CORS(app, resources={
     r"/*": {
-        "origins": [
-            "https://chatbot-login.onrender.com",
-            "http://localhost:5173"
-        ],
+        "origins": "*",  # Temporary wildcard for debugging
         "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"],
-        "supports_credentials": True,
-        "expose_headers": ["Content-Type", "Authorization"]
+        "allow_headers": ["*"],
+        "supports_credentials": True
     }
 })
 
