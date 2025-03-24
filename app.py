@@ -59,28 +59,31 @@ def process_request():
 
         # 🔹 Step 2: Send to LLM
         mapped_placeholders = [item["anonymized"] for item in mapping]
-        llm_response = send_to_llm(
+        llm_raw_response  = send_to_llm(
             anonymized_prompt,
             placeholders=mapped_placeholders  # Pass placeholders for proper response handling
         )
 
         # ✅ Debug print before recontextualization
-        print("\n📌 **LLM Response Before Cleaning:**\n", llm_response)
+        print("\n📌 **LLM Response Before Cleaning:**\n", llm_raw_response )
 
         # 🔹 Step 3: Recontextualization - Replace anonymized placeholders with original values
+        llm_after_recontext = llm_raw_response
         for item in mapping:
             placeholder = re.escape(item["anonymized"])
-            llm_response = re.sub(rf'{placeholder}', item["original"], llm_response)
+            llm_after_recontext = re.sub(rf'{placeholder}', item["original"], llm_after_recontext)
 
         # ✅ Final cleanup of unnecessary placeholders
-        llm_response = re.sub(r'<\w+_\d+>', '', llm_response)
+        llm_final_response  = re.sub(r'<\w+_\d+>', '', llm_after_recontext)
 
         # ✅ Final debug print of cleaned response
         print("\n📌 **Final Response (After Cleaning):**\n", llm_response)
 
         # 🔹 Step 4: Return response
         return jsonify({
-            "response": llm_response,
+            "response": llm_final_response,
+            "llm_raw": llm_raw_response,
+            "llm_after_recontext": llm_after_recontext,
             "anonymized_prompt": anonymized_prompt,
             "mapping": mapping
         })
