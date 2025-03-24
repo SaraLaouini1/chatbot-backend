@@ -1,4 +1,5 @@
 # Updated app.py with authentication
+from flask import send_from_directory
 from flask import Flask, request, jsonify
 from anonymization import anonymize_text
 from llm_client import send_to_llm
@@ -150,6 +151,18 @@ def process_request():
     except Exception as e:
         print("❌ Error:", str(e))
         return jsonify({"error": str(e)}), 500
+
+@app.route('/')
+def health_check():
+    return jsonify({"status": "active"}), 200
+
+@app.route('/<path:path>')
+def catch_all(path):
+    return jsonify({
+        "error": "Not Found",
+        "message": "The requested endpoint doesn't exist",
+        "available_endpoints": ["/register", "/login", "/process"]
+    }), 404
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)))
