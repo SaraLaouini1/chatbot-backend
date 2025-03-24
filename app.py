@@ -97,7 +97,11 @@ def login():
         return jsonify({"error": "Invalid credentials"}), 401
 
     access_token = create_access_token(identity=username)
-    return jsonify(access_token=access_token), 200
+    #return jsonify(access_token=access_token), 200
+    return jsonify({  # Add user info to response
+        "access_token": access_token,
+        "username": username
+    }), 200
 
 @app.route('/process', methods=['POST'])
 @jwt_required()
