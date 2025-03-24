@@ -5,7 +5,7 @@ from flask import current_app
 from alembic import context
 
 config = context.config
-fileConfig(config.config_file_name)
+#fileConfig(config.config_file_name)
 target_metadata = current_app.extensions['migrate'].db.Model.metadata
 
 def run_migrations_online():
