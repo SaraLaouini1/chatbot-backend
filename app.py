@@ -21,7 +21,11 @@ load_dotenv()
 app = Flask(__name__)
 
 # Add after app creation
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL').replace("postgres://", "postgresql://", 1)
+database_url = os.getenv('DATABASE_URL', 'sqlite:///local.db')  # Default to SQLite
+if database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET', os.urandom(32).hex())
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 3600  # 1 hour expiration
 
