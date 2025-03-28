@@ -42,7 +42,20 @@ def enhance_recognizers():
         context=["card", "credit", "account"]
     )
 
-   
+    # CIN (Carte Nationale d'Identité)
+    cin_pattern = Pattern(
+        name="cin_pattern",
+        regex=r"\b[A-Z]{1,2}\d{5}\b",
+        score=0.85
+    )
+    cin_recognizer = PatternRecognizer(
+        supported_entity="CIN",
+        patterns=[cin_pattern],
+        context=["cin", "carte nationale", "identité", "national card"]
+    )
+
+
+    analyzer.registry.add_recognizer(cin_recognizer)
     analyzer.registry.add_recognizer(credit_card_recognizer)
     analyzer.registry.add_recognizer(money_recognizer)
 
