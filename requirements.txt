@@ -13,6 +13,9 @@ flask-jwt-extended==4.5.3
 flask-sqlalchemy==3.1.1
 bcrypt==4.1.2
 psycopg2-binary==2.9.9
+langdetect
+spacy
+https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.7.1/en_core_web_lg-3.7.1-py3-none-any.whl
+https://github.com/explosion/spacy-models/releases/download/fr_core_news_md-3.7.0/fr_core_news_md-3.7.0-py3-none-any.whl
 transformers
 torch
-https://github.com/explosion/spacy-models/releases/download/fr_core_news_md-3.7.0/fr_core_news_md-3.7.0-py3-none-any.whl
