@@ -1,0 +1,35 @@
+name: Database Migrations
+
+on:
+  workflow_dispatch:  # Allow manual triggers
+  push:
+    branches: [main]
+
+jobs:
+  create-migrations:
+    runs-on: ubuntu-latest  # GitHub's Linux runner handles everything
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Generate Migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          FLASK_APP: ${{ secrets.FLASK_APP }}
+        run: |
+          flask db init  # Only needed once
+          flask db migrate -m "Auto-generated migration"
+
+      - name: Commit Migrations
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "Auto-commit migrations"
+          branch: main
