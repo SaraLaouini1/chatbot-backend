@@ -10,7 +10,7 @@ def send_to_llm(prompt, placeholders, lang='en'):
 
         system_messages = {
             'fr': f"""Vous êtes un assistant intelligent. Règles :
-    1. Utilisez UNIQUEMENT ces espaces réservés : { », “.join(placeholders) if placeholders else 'aucun' }
+    1. Utilisez UNIQUEMENT ces espaces réservés : { ", ".join(placeholders) if placeholders else 'aucun' }
     2. Ne créez jamais de nouveaux espaces réservés
     3. Conserver le format original des placeholders
     4. Répondre en texte clair sans markdown
