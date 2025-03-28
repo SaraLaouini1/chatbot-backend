@@ -38,7 +38,7 @@ def send_to_llm(prompt, placeholders, lang='en'):
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": system_message},
+                {"role": "system", "content": system_msg},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.2,
