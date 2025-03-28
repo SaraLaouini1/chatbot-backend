@@ -12,6 +12,8 @@ import re
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask_migrate import Migrate
+
 
 
 load_dotenv()
@@ -25,6 +27,23 @@ app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 3600  # 1 hour expiration
 
 db = SQLAlchemy(app)
 jwt = JWTManager(app)
+migrate = Migrate(app, db)
+
+# Add this CLI command group
+@app.cli.command()
+def init_db():
+    """Initialize the database."""
+    db.create_all()
+    # Create admin user if not exists
+    if not User.query.filter_by(username='admin').first():
+        admin = User(
+            username='admin',
+            password_hash=generate_password_hash(os.getenv('ADMIN_PWD', 'securepassword123')),
+            is_admin=True
+        )
+        db.session.add(admin)
+        db.session.commit()
+    print("Database initialized.")
 
 
 class User(db.Model):
@@ -164,5 +183,8 @@ def process_request():
         print("❌ Error:", str(e))
         return jsonify({"error": str(e)}), 500
 
+# Update your existing code to include:
 if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)))
