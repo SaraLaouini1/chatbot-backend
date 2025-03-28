@@ -3,35 +3,39 @@ from presidio_analyzer.nlp_engine import NlpEngineProvider
 from collections import defaultdict
 import re
 from transformers import pipeline
+from langdetect import detect
 
-# Configure NLP engine with spaCy
+# Configure NLP engine with both English and French models
 provider = NlpEngineProvider(nlp_configuration={
     "nlp_engine_name": "spacy",
-    "models": [{"lang_code": "en", "model_name": "en_core_web_lg"}]
+    "models": [
+        {"lang_code": "en", "model_name": "en_core_web_lg"},
+        {"lang_code": "fr", "model_name": "fr_core_news_md"}
+    ]
 })
 nlp_engine = provider.create_engine()
 
 analyzer = AnalyzerEngine(
     nlp_engine=nlp_engine,
-    supported_languages=["en"]
+    supported_languages=["en", "fr"]
 )
 
 CURRENCY_NORMALIZATION = {
-    "eur": "EUR",
-    "euro": "EUR",
-    "usd": "USD",
-    "dollars": "USD",
-    "dh": "MAD",
-    "dirham": "MAD",
-    "gbp": "GBP",
-    "pounds": "GBP"
+    "eur": "EUR", "euro": "EUR", "usd": "USD", "dollars": "USD",
+    "gbp": "GBP", "pounds": "GBP"
 }
 
 class TransformersRecognizer(EntityRecognizer):
-    """ML-powered recognizer using Hugging Face transformers"""
+    """Multilingual ML-powered recognizer with entity group fix"""
     def __init__(self):
-        super().__init__(supported_entities=["PROFESSIONAL_STATUS", "INTERNAL_ID"], name="HF Transformers")
-        self.model = pipeline("token-classification", model="dslim/bert-base-NER")
+        super().__init__(
+            supported_entities=["PER", "ORG", "LOC"],  # Actual entities from the model
+            name="HF Transformers"
+        )
+        self.model = pipeline(
+            "token-classification",
+            model="Davlan/bert-base-multilingual-cased-ner-hrl"
+        )
         
     def load(self):
         pass
@@ -40,47 +44,55 @@ class TransformersRecognizer(EntityRecognizer):
         results = []
         predictions = self.model(text)
         for pred in predictions:
-            if pred['entity_group'] in self.supported_entities:
+            # Handle different model output formats
+            entity_type = pred.get('entity_group', pred.get('entity'))
+            
+            if entity_type in self.supported_entities:
                 results.append({
                     'start': pred['start'],
                     'end': pred['end'],
                     'score': pred['score'],
-                    'entity_type': pred['entity_group']
+                    'entity_type': entity_type
                 })
         return results
 
 def enhance_recognizers():
-    """Register all custom pattern recognizers"""
-    # Enhanced phone number recognizer
+    """Register multilingual recognizers"""
+    # International phone number recognizer
     phone_recognizer = PatternRecognizer(
         supported_entity="PHONE_NUMBER",
         patterns=[
             Pattern(
                 "international_phone",
-                r"\+(?:[0-9]●?){6,14}[0-9]",  # Matches international format
+                r"(?:\+\d{1,3}[- ]?)?\d{2,4}[- ]?\d{3,4}[- ]?\d{3,4}",
                 0.9
-            ),
-            Pattern(
-                "standard_phone",
-                r"\b(?:\+?1[-. ]?)?\(?\d{3}\)?[-. ]?\d{3}[-. ]?\d{4}\b",  # US/CA numbers
-                0.85
             )
         ],
-        context=["phone", "mobile", "tel", "number", "contact"]
+        context=["phone", "mobile", "tel", "number", "contact",
+                 "téléphone", "portable", "numéro"]
     )
 
-    # Professional status recognizer
+    # Multilingual professional status recognizer (regex-based)
     professional_status_recognizer = PatternRecognizer(
         supported_entity="PROFESSIONAL_STATUS",
-        patterns=[Pattern("status_pattern", r"\b(Full-time|Part-time|Contract|Freelance|Consultant)\b", 0.7)],
-        context=["employment", "position", "role", "status"]
+        patterns=[
+            Pattern("status_en", r"\b(Full-time|Part-time|Contract|Freelance)\b", 0.7),
+            Pattern("status_fr", r"\b(CDI|CDD|Stage|Indépendant)\b", 0.7)
+        ],
+        context=["employment", "position", "role", "status",
+                 "emploi", "poste", "statut"]
     )
 
-    # General financial recognizers
+    # International credit card recognizer
     credit_card_recognizer = PatternRecognizer(
         supported_entity="CREDIT_CARD",
-        patterns=[Pattern("cc_pattern", r"\b\d{4}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}\b", 0.95)],
-        context=["card", "credit", "account", "payment"]
+        patterns=[Pattern(
+            "cc_pattern", 
+            r"\b(?:\d[ -]*?){13,19}\b",  # Matches various credit card formats
+            0.95
+        )],
+        context=["card", "credit", "account", "payment", 
+                 "carte", "crédit", "paiement"]
     )
 
     recognizers = [
@@ -93,28 +105,28 @@ def enhance_recognizers():
     for recognizer in recognizers:
         analyzer.registry.add_recognizer(recognizer)
 
-def normalize_money_format(money_str):
-    """Normalize currency representations"""
-    match = re.search(r"(\d+)\s*([a-zA-Z]+)", money_str)
-    if match:
-        amount, currency = match.groups()
-        normalized_currency = CURRENCY_NORMALIZATION.get(currency.lower(), currency.upper())
-        return f"{amount} {normalized_currency}"
-    return money_str
+def detect_language(text):
+    """Detect text language with fallback to English"""
+    try:
+        lang = detect(text)
+        return lang if lang in ['en', 'fr'] else 'en'
+    except:
+        return 'en'
 
 def anonymize_text(text):
     enhance_recognizers()
+    lang = detect_language(text)
     
     entities = [
         "PERSON", "EMAIL_ADDRESS", "CREDIT_CARD", "DATE_TIME",
         "LOCATION", "PHONE_NUMBER", "MONEY", "PROFESSIONAL_STATUS",
-        "INTERNAL_ID"
+        "PER", "ORG"  # Added model entities
     ]
 
     analysis = analyzer.analyze(
         text=text,
         entities=entities,
-        language="en",
+        language=lang,
         score_threshold=0.45
     )
 
@@ -127,7 +139,7 @@ def anonymize_text(text):
 
     for entity in analysis:
         entity_text = text[entity.start:entity.end]
-        
+
         # Normalize monetary values
         if entity.entity_type == "MONEY":
             entity_text = normalize_money_format(entity_text)
@@ -151,3 +163,12 @@ def anonymize_text(text):
         )
 
     return anonymized_text, updated_analysis
+
+def normalize_money_format(money_str):
+    """Normalize currency representations"""
+    match = re.search(r"(\d+)\s*([a-zA-Z]+)", money_str)
+    if match:
+        amount, currency = match.groups()
+        normalized_currency = CURRENCY_NORMALIZATION.get(currency.lower(), currency.upper())
+        return f"{amount} {normalized_currency}"
+    return money_str
