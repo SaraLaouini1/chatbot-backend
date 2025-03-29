@@ -1,148 +1,92 @@
-# Install required packages
-# pip install presidio-analyzer transformers torch datasets
-
-from presidio_analyzer import AnalyzerEngine
-from presidio_analyzer import TransformersRecognizer
-from presidio_analyzer.nlp_engine import TransformersNlpEngine
-from transformers import AutoTokenizer, AutoModelForTokenClassification, TrainingArguments, Trainer
-from datasets import Dataset
-import torch
+from presidio_analyzer import AnalyzerEngine, PatternRecognizer, Pattern, EntityRecognizer
+from presidio_analyzer.nlp_engine import NlpEngineProvider
+from transformers import pipeline
 from collections import defaultdict
-import random
-import string
+import re
 
-# ==================================================================
-# 1. Custom Model Training (Run this once to create detection models)
-# ==================================================================
+# Initialize Presidio Analyzer
+analyzer = AnalyzerEngine()
 
-def generate_training_data(num_samples=500):
-    """Generate synthetic training data for passwords and IDs"""
-    data = []
-    for _ in range(num_samples):
-        # Generate random context patterns
-        contexts = [
-            f"Password: {''.join(random.choices(string.ascii_letters + string.digits + '!@#$%^&*', k=12))}",
-            f"User ID: {''.join(random.choices(string.ascii_uppercase + string.digits, k=8))}",
-            f"Security token: {random.randint(1000,9999)}-{''.join(random.choices(string.ascii_letters, k=6))}",
-            f"Access code: {''.join(random.choices(string.digits, k=10))}"
+# Dictionary to standardize currency names
+CURRENCY_NORMALIZATION = {
+    "eur": "EUR", "euro": "EUR",
+    "usd": "USD", "dollars": "USD",
+    "dh": "MAD", "dirham": "MAD",
+    "gbp": "GBP", "pounds": "GBP"
+}
+
+# Load Hugging Face's BERT-based NER model
+bert_ner = pipeline("ner", model="dbmdz/bert-large-cased-finetuned-conll03-english")
+
+class BERTRecognizer(EntityRecognizer):
+    def load(self):
+        return
+
+    def analyze(self, text, entities, language, nlp_artifacts=None):
+        results = bert_ner(text)
+        return [
+            {
+                "entity_type": "PASSWORD" if res["entity"] == "MISC" else res["entity"],
+                "start": res["start"],
+                "end": res["end"],
+                "score": res["score"],
+            }
+            for res in results if res["score"] > 0.85  # Only keep high-confidence predictions
         ]
-        
-        for text in contexts:
-            entities = []
-            if "Password" in text:
-                start = text.find(":") + 2
-                end = len(text)
-                entities.append((start, end, "PASSWORD"))
-            elif "ID" in text:
-                start = text.find(":") + 2
-                end = len(text)
-                entities.append((start, end, "ID"))
-            
-            data.append((text, {"entities": entities}))
-    
-    return Dataset.from_dict({
-        "text": [d[0] for d in data],
-        "entities": [d[1]["entities"] for d in data]
-    })
 
-# Initialize base model
-model_name = "bert-base-uncased"
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForTokenClassification.from_pretrained(
-    model_name,
-    num_labels=3,  # 0: O, 1: B-PASSWORD, 2: B-ID
-    id2label={0: "O", 1: "B-PASSWORD", 2: "B-ID"},
-    label2id={"O": 0, "B-PASSWORD": 1, "B-ID": 2}
-)
+# Custom recognizers
+def enhance_recognizers():
+    # Money format recognizer
+    money_pattern = Pattern(
+        name="money_pattern",
+        regex=r"(?i)(\d+)\s*(\$|€|£|USD|EUR|GBP|MAD)|\b(\d+)\s?(dollars|euros|pounds|dirhams|dh)\b",
+        score=0.9
+    )
+    money_recognizer = PatternRecognizer(
+        supported_entity="MONEY",
+        patterns=[money_pattern],
+        context=["invoice", "amount", "payment"]
+    )
 
-# Convert training data to tokenized format
-def tokenize_and_align_labels(examples):
-    tokenized_inputs = tokenizer(examples["text"], truncation=True, padding="max_length", max_length=128)
-    labels = []
-    
-    for i, entity_list in enumerate(examples["entities"]):
-        text = examples["text"][i]
-        word_ids = tokenized_inputs.word_ids(batch_index=i)
-        label_ids = [0] * len(word_ids)
-        
-        for start, end, label in entity_list:
-            token_start = None
-            token_end = None
-            for idx, word_id in enumerate(word_ids):
-                if word_id is None:
-                    continue
-                if start <= tokenizer.decode(tokenized_inputs["input_ids"][i][idx], skip_special_tokens=True).start():
-                    token_start = idx
-                    break
-            for idx, word_id in enumerate(reversed(word_ids)):
-                if word_id is None:
-                    continue
-                if end >= len(text) - tokenizer.decode(tokenized_inputs["input_ids"][i][::-1][idx], skip_special_tokens=True).start():
-                    token_end = len(word_ids) - idx
-                    break
-            
-            if token_start and token_end:
-                label_type = 1 if label == "PASSWORD" else 2
-                for j in range(token_start, token_end):
-                    label_ids[j] = label_type
-        
-        labels.append(label_ids)
-    
-    tokenized_inputs["labels"] = labels
-    return tokenized_inputs
+    # Custom Credit Card Recognizer (without Luhn check)
+    credit_card_pattern = Pattern(
+        name="credit_card_pattern",
+        regex=r"\b\d{4}-\d{4}-\d{4}-\d{4}\b",
+        score=0.9
+    )
+    credit_card_recognizer = PatternRecognizer(
+        supported_entity="CREDIT_CARD",
+        patterns=[credit_card_pattern],
+        context=["card", "credit", "account"]
+    )
 
-# Train the model
-dataset = generate_training_data().map(tokenize_and_align_labels, batched=True)
-training_args = TrainingArguments(
-    output_dir="./security_model",
-    num_train_epochs=3,
-    per_device_train_batch_size=8,
-    logging_dir="./logs",
-    save_strategy="no"
-)
+    # Add recognizers to Presidio
+    analyzer.registry.add_recognizer(credit_card_recognizer)
+    analyzer.registry.add_recognizer(money_recognizer)
+    analyzer.registry.add_recognizer(BERTRecognizer(supported_entities=["PASSWORD", "ID", "EMAIL_ADDRESS"]))
 
-trainer = Trainer(
-    model=model,
-    args=training_args,
-    train_dataset=dataset,
-)
-
-trainer.train()
-model.save_pretrained("./security_model")
-tokenizer.save_pretrained("./security_model")
-
-# ==============================================
-# 2. Anonymization Code with ML Detection
-# ==============================================
-
-class SecurityNlpEngine(TransformersNlpEngine):
-    def __init__(self):
-        super().__init__(
-            models=[
-                {"model_name": "dslim/bert-base-NER", "labels": ["LOC", "MISC", "ORG", "PER"]},
-                {"model_name": "./security_model", "labels": ["PASSWORD", "ID"]}
-            ]
-        )
-
-analyzer = AnalyzerEngine(nlp_engine=SecurityNlpEngine())
-
-# Add custom recognizers for our ML-detected entities
-security_recognizer = TransformersRecognizer(
-    model_path="./security_model",
-    supported_entities=["PASSWORD", "ID"],
-    context=["credentials", "authentication", "access", "security"]
-)
-
-analyzer.registry.add_recognizer(security_recognizer)
+def normalize_money_format(money_str):
+    """Normalize different currency representations to avoid duplicates."""
+    match = re.search(r"(\d+)\s*([a-zA-Z]+)", money_str)
+    if match:
+        amount, currency = match.groups()
+        normalized_currency = CURRENCY_NORMALIZATION.get(currency.lower(), currency.upper())
+        return f"{amount} {normalized_currency}"
+    return money_str
 
 def anonymize_text(text):
-    entities = ["PASSWORD", "ID", "PER", "LOC", "ORG"]
+    enhance_recognizers()
     
+    entities = ["PERSON", "PASSWORD", "EMAIL_ADDRESS", "CREDIT_CARD", "DATE_TIME", 
+               "LOCATION", "PHONE_NUMBER", "NRP", "MONEY", "IBAN_CODE", "IP_ADDRESS", 
+               "MEDICAL_LICENSE", "URL", "US_BANK_NUMBER", "US_DRIVER_LICENSE", 
+               "US_PASSPORT", "US_SSN"]
+
     analysis = analyzer.analyze(
         text=text,
         entities=entities,
         language="en",
-        score_threshold=0.85
+        score_threshold=0.3
     )
 
     # Sort entities in reverse order to prevent replacement conflicts
@@ -155,6 +99,12 @@ def anonymize_text(text):
 
     for entity in analysis:
         entity_text = text[entity.start:entity.end]
+        
+        # Normalize money values
+        if entity.entity_type == "MONEY":
+            entity_text = normalize_money_format(entity_text)
+
+        # Create unique key with entity type and text
         key = (entity_text, entity.entity_type)
         
         if key not in existing_mappings:
@@ -167,6 +117,7 @@ def anonymize_text(text):
                 "anonymized": anonymized_label
             })
 
+        # Replace in text
         anonymized_text = (
             anonymized_text[:entity.start] + 
             existing_mappings[key] + 
@@ -174,4 +125,3 @@ def anonymize_text(text):
         )
 
     return anonymized_text, updated_analysis
-
