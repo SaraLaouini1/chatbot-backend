@@ -43,7 +43,7 @@ def process_request():
         original_prompt = data.get("prompt", "")
 
         # 🔹 Step 1: Anonymization
-        anonymized_prompt, mapping, lang = anonymize_text(original_prompt)
+        anonymized_prompt, mapping = anonymize_text(original_prompt)
 
         # Validate placeholders in the anonymized prompt
         #expected_placeholders = {item["anonymized"] for item in mapping}
@@ -60,8 +60,7 @@ def process_request():
         mapped_placeholders = [item["anonymized"] for item in mapping]
         llm_raw_response  = send_to_llm(
             anonymized_prompt,
-            placeholders=mapped_placeholders,
-            lang=lang  # Pass detected language
+            placeholders=mapped_placeholders
         )
 
         # ✅ Debug print before recontextualization
@@ -82,7 +81,6 @@ def process_request():
         # 🔹 Step 4: Return response
         return jsonify({
             "response": llm_final_response,
-            "detected_language": lang,  # Add language to response
             "llm_raw": llm_raw_response,
             "llm_after_recontext": llm_after_recontext,
             "anonymized_prompt": anonymized_prompt,
