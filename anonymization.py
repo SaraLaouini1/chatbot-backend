@@ -8,7 +8,9 @@ import re
 analyzer = AnalyzerEngine()
 
 # Load BERT-based Named Entity Recognition (NER)
-bert_ner = pipeline("ner", model="dbmdz/bert-large-cased-finetuned-conll03-english")
+#bert_ner = pipeline("ner", model="dbmdz/bert-large-cased-finetuned-conll03-english")
+bert_ner = pipeline("ner", model="dslim/bert-base-NER")
+
 
 # Define a regex pattern for detecting passwords
 PASSWORD_REGEX = r"(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}"
