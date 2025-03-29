@@ -55,17 +55,31 @@ def enhance_recognizers():
    
 
     # Add to enhance_recognizers()
+    # In enhance_recognizers()
     password_pattern = Pattern(
         name="password_pattern",
-        regex=r"(?i)(password|passwd|pwd)[\s:]+([^\s]{8,})|\b[a-f0-9]{32}\b",
-        score=0.85
+        regex=r"""(?xi)
+            (?:password|passwd|pwd)\s*[:=]?\s*(\S{8,})      # Key-value pattern
+            |\b(?=\S*[a-z])(?=\S*[A-Z\d])(?=\S*[\W_])\S{8,}\b  # Complex standalone
+            |\b[a-fA-F0-9]{32}\b                             # MD5 hashes
+            |\b[a-fA-F0-9]{40}\b                             # SHA-1 hashes
+        """,
+        score=0.9
     )
     password_recognizer = PatternRecognizer(
         supported_entity="PASSWORD",
         patterns=[password_pattern],
-        context=["login", "credentials"]
+        context=["login", "credentials", "password"]
     )
 
+    org_recognizer = PatternRecognizer(
+        supported_entity="ORG",
+        context=["company", "organization", "firm"],
+        deny_list=[]
+    )
+
+    
+    analyzer.registry.add_recognizer(org_recognizer) 
     analyzer.registry.add_recognizer(password_recognizer)
     analyzer.registry.add_recognizer(credit_card_recognizer)
     analyzer.registry.add_recognizer(money_recognizer)
@@ -85,14 +99,14 @@ def anonymize_text(text):
     entities = ["PERSON","PASSWORD", "EMAIL_ADDRESS", "CREDIT_CARD", "DATE_TIME", 
                "LOCATION", "PHONE_NUMBER", "NRP", "MONEY", "URL", "IBAN_CODE", "IP_ADDRESS",
                
-                "ORG", "NORP", "LANGUAGE", "EVENT", "LAW"
+                "ORG", "NORP", "LANGUAGE", "EVENT", "LAW","GPE", "LOC"
                ]
 
     analysis = analyzer.analyze(
         text=text,
         entities=entities,
         language="en",
-        score_threshold=0.45,  # Better balance than 0.35
+        score_threshold=0.3,  # Better balance than 0.35
         return_decision_process=False  # Disable for production
     )
 
