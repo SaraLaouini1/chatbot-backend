@@ -1,4 +1,3 @@
-
 from flask import Flask, request, jsonify
 from anonymization import anonymize_text
 from llm_client import send_to_llm
@@ -8,9 +7,6 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 import os
 import re
-
-from anonymization import detect_language
-
 
 load_dotenv()
 
@@ -45,7 +41,6 @@ def process_request():
     try:
         data = request.json
         original_prompt = data.get("prompt", "")
-        lang = detect_language(original_prompt)
 
         # 🔹 Step 1: Anonymization
         anonymized_prompt, mapping = anonymize_text(original_prompt)
@@ -65,8 +60,7 @@ def process_request():
         mapped_placeholders = [item["anonymized"] for item in mapping]
         llm_raw_response  = send_to_llm(
             anonymized_prompt,
-            placeholders=mapped_placeholders,
-            lang=lang
+            placeholders=mapped_placeholders  # Pass placeholders for proper response handling
         )
 
         # ✅ Debug print before recontextualization
@@ -87,7 +81,6 @@ def process_request():
         # 🔹 Step 4: Return response
         return jsonify({
             "response": llm_final_response,
-            "detected_language": lang,
             "llm_raw": llm_raw_response,
             "llm_after_recontext": llm_after_recontext,
             "anonymized_prompt": anonymized_prompt,
