@@ -82,7 +82,7 @@ def anonymize_text(text):
         text=text,
         entities=entities,
         language=lang,
-        score_threshold=0.4
+        score_threshold=0.3
     )
 
     analysis = sorted(analysis, key=lambda x: x.start, reverse=True)
