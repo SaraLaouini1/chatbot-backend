@@ -1,5 +1,4 @@
-from presidio_analyzer import AnalyzerEngine, PatternRecognizer, Pattern, EntityRecognizer
-from presidio_analyzer.nlp_engine import NlpEngineProvider
+from presidio_analyzer import AnalyzerEngine, EntityRecognizer
 from transformers import pipeline
 from collections import defaultdict
 import re
@@ -8,9 +7,7 @@ import re
 analyzer = AnalyzerEngine()
 
 # Load BERT-based Named Entity Recognition (NER)
-#bert_ner = pipeline("ner", model="dbmdz/bert-large-cased-finetuned-conll03-english")
 bert_ner = pipeline("ner", model="dslim/bert-base-NER")
-
 
 # Define a regex pattern for detecting passwords
 PASSWORD_REGEX = r"(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}"
@@ -57,7 +54,7 @@ def anonymize_text(text):
     analysis = analyzer.analyze(
         text=text,
         entities=entities,
-        language="en",
+        language="en",  # The language argument is passed here
         score_threshold=0.3
     )
 
