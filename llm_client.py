@@ -1,11 +1,19 @@
 import os
 from openai import OpenAI
+from langdetect import detect
+
 
 def send_to_llm(prompt, placeholders):
     
     try:
 
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+        # Detect language
+        language = detect(prompt)
+        lang_instruction = "Respond in clean plain text without markdown." 
+        if language == "fr":
+            lang_instruction = "Réponds en français en texte brut sans markdown."
     
         system_message = f"""You are an intelligent assistant that understands both English and French.
 Follow these rules:
