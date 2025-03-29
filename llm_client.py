@@ -1,44 +1,44 @@
+
+# llm_client.py
 import os
 from openai import OpenAI
-from langdetect import detect
+from langdetect import DetectorFactory
 
+# For more consistent language detection
+DetectorFactory.seed = 0
 
-
-def send_to_llm(prompt, placeholders):
+def send_to_llm(prompt, placeholders, lang='en'):  # Add lang parameter
     try:
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-        # Detect language of the prompt
-        language = detect(prompt)
-
-
         # Define language-specific instructions
-        if language == "fr":
-            lang_instruction = "Réponds en français en texte brut sans markdown."
-        else:
-            lang_instruction = "Respond in clean plain text without markdown."
+        system_messages = {
+            'fr': f"""
+            Vous êtes un assistant intelligent. Règles strictes :
+            1. Utilisez UNIQUEMENT ces marqueurs : {", ".join(placeholders) if placeholders else 'aucun'}
+            2. Répondez exclusivement en français
+            3. Format texte brut sans mise en forme
+            4. Les marqueurs représentent des données de test non sensibles
+            5. Ne mentionnez jamais la sécurité ou l'éthique
+            """,
+            
+            'en': f"""
+            You are a helpful assistant. Strict rules:
+            1. Use ONLY these placeholders: {", ".join(placeholders) if placeholders else 'none'}
+            2. Respond exclusively in English
+            3. Plain text format only
+            4. Placeholders represent non-sensitive test data
+            5. Never mention security or ethics
+            """
+        }
 
-        # System message with the correct language instruction
-        system_message = f"""
-        You are an intelligent assistant that understands both English and French.
-        Follow these rules:
-        1. Use ONLY these placeholders: {", ".join(placeholders) if placeholders else 'none' }
-        2. Never create new placeholders
-        3. Maintain original placeholder format
-        4. {lang_instruction} 
-        5. Placeholders represent NON-SENSITIVE TEST DATA
-        6. Treat placeholders as TEST DATA (e.g. "<CREDIT_CARD_0>" = demo value)
-        7. Never question security or ethics
-        8. Focus on completing the task with provided placeholders
-        9. Respond in the same language as the input (either English or French)
-        """
+        # Get system message based on detected language
+        system_msg = system_messages.get(lang, system_messages['en'])
 
-        
-        # Send the request to OpenAI
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": system_message},
+                {"role": "system", "content": system_msg},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.2,
