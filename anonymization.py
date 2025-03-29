@@ -1,7 +1,8 @@
 # Install required packages
 # pip install presidio-analyzer transformers torch datasets
 
-from presidio_analyzer import AnalyzerEngine, TransformersRecognizer
+from presidio_analyzer import AnalyzerEngine
+from presidio_analyzer.transformers_recognizer import TransformersRecognizer
 from presidio_analyzer.nlp_engine import TransformersNlpEngine
 from transformers import AutoTokenizer, AutoModelForTokenClassification, TrainingArguments, Trainer
 from datasets import Dataset
@@ -118,8 +119,8 @@ class SecurityNlpEngine(TransformersNlpEngine):
     def __init__(self):
         super().__init__(
             models=[
-                {"model_name": "./security_model", "labels": ["PASSWORD", "ID"]},
-                {"model_name": "dslim/bert-base-NER", "labels": ["LOC", "MISC", "ORG", "PER"]}
+                {"model_name": "dslim/bert-base-NER", "labels": ["LOC", "MISC", "ORG", "PER"]},
+                {"model_name": "./security_model", "labels": ["PASSWORD", "ID"]}
             ]
         )
 
