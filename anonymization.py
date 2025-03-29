@@ -2,7 +2,18 @@ from presidio_analyzer import AnalyzerEngine, PatternRecognizer, Pattern
 from collections import defaultdict
 import re
 
-analyzer = AnalyzerEngine()
+from presidio_analyzer import AnalyzerEngine
+import spacy
+
+#analyzer = AnalyzerEngine()
+
+fr_nlp = spacy.load("fr_core_news_md")
+
+# Initialize the Presidio Analyzer with French support
+analyzer = AnalyzerEngine(
+    supported_languages=["fr", "en"],  # Enable French language support
+    nlp_engine_by_language={"fr": fr_nlp}
+)
 
 # Dictionary to standardize currency names
 CURRENCY_NORMALIZATION = {
