@@ -1,85 +1,90 @@
+# anonymization.py
 from presidio_analyzer import AnalyzerEngine, PatternRecognizer, Pattern
+from presidio_analyzer.nlp_engine import NlpEngineProvider
 from collections import defaultdict
 import re
-
-from presidio_analyzer import AnalyzerEngine
+from langdetect import detect
 import spacy
 
-#analyzer = AnalyzerEngine()
+# Initialize NLP engine with both French and English models
+def setup_nlp_engine():
+    provider = NlpEngineProvider(
+        nlp_configuration={
+            "nlp_engine_name": "spacy",
+            "models": [
+                {"lang_code": "fr", "model_name": "fr_core_news_md"},
+                {"lang_code": "en", "model_name": "en_core_web_lg"}
+            ]
+        }
+    )
+    return provider.create_engine()
 
-fr_nlp = spacy.load("fr_core_news_md")
-
-# Initialize the Presidio Analyzer with French support
+nlp_engine = setup_nlp_engine()
 analyzer = AnalyzerEngine(
-    supported_languages=["fr", "en"],  # Enable French language support
-    nlp_engine_by_language={"fr": fr_nlp}
+    nlp_engine=nlp_engine,
+    supported_languages=["fr", "en"]
 )
 
-# Dictionary to standardize currency names
 CURRENCY_NORMALIZATION = {
-    "eur": "EUR",
-    "euro": "EUR",
-    "usd": "USD",
-    "dollars": "USD",
-    "dh": "MAD",
-    "dirham": "MAD",
-    "gbp": "GBP",
-    "pounds": "GBP"
+    "eur": "EUR", "euro": "EUR", "euros": "EUR",
+    "usd": "USD", "dollars": "USD", "dollar": "USD",
+    "gbp": "GBP", "livre": "GBP", "livres": "GBP",
+    "mad": "MAD", "dh": "MAD", "dirham": "MAD", "dirhams": "MAD"
 }
 
-# Custom recognizers
 def enhance_recognizers():
-    # Money format recognizer
-    money_pattern = Pattern(
-        name="money_pattern",
-        regex=r"(?i)(\d+)\s*(\$|€|£|USD|EUR|GBP|MAD)|\b(\d+)\s?(dollars|euros|pounds|dirhams|dh)\b",
-        score=0.9
-    )
+    # Money recognizer with bilingual context
     money_recognizer = PatternRecognizer(
         supported_entity="MONEY",
-        patterns=[money_pattern],
-        context=["invoice", "amount", "payment"]
+        patterns=[
+            Pattern(
+                "money_pattern",
+                r"(?i)(\d+)\s*(\$|€|£|USD|EUR|GBP|MAD)|\b(\d+)\s?(dollars|euros|livres|dirhams|dh)\b",
+                0.9
+            )
+        ],
+        context=["invoice", "amount", "payment", "facture", "montant", "paiement"]
     )
 
-    # Custom Credit Card Recognizer (without Luhn check)
-    credit_card_pattern = Pattern(
-        name="credit_card_pattern",
-        regex=r"\b\d{4}-\d{4}-\d{4}-\d{4}\b",
-        score=0.9
-    )
-    credit_card_recognizer = PatternRecognizer(
-        supported_entity="CREDIT_CARD",
-        patterns=[credit_card_pattern],
-        context=["card", "credit", "account"]
+    # Phone number recognizer for international formats
+    phone_recognizer = PatternRecognizer(
+        supported_entity="PHONE_NUMBER",
+        patterns=[
+            Pattern(
+                "international_phone",
+                r"(?:\+\d{1,3}[- ]?)?\(?\d{3}\)?[- ]?\d{3}[- ]?\d{4}",
+                0.9
+            )
+        ],
+        context=["phone", "mobile", "tel", "number", "téléphone", "portable"]
     )
 
-   
-    analyzer.registry.add_recognizer(credit_card_recognizer)
     analyzer.registry.add_recognizer(money_recognizer)
+    analyzer.registry.add_recognizer(phone_recognizer)
 
-def normalize_money_format(money_str):
-    """Normalize different currency representations to avoid duplicates."""
-    match = re.search(r"(\d+)\s*([a-zA-Z]+)", money_str)
-    if match:
-        amount, currency = match.groups()
-        normalized_currency = CURRENCY_NORMALIZATION.get(currency.lower(), currency.upper())
-        return f"{amount} {normalized_currency}"
-    return money_str
+def detect_language(text):
+    try:
+        lang = detect(text)  
+        return lang if lang in ['fr', 'en'] else 'en'
+    except:
+        return 'en'
 
 def anonymize_text(text):
+    lang = detect_language(text)
     enhance_recognizers()
     
-    entities = ["PERSON","PASSWORD", "EMAIL_ADDRESS", "CREDIT_CARD", "DATE_TIME", 
-               "LOCATION", "PHONE_NUMBER", "NRP", "MONEY"]
+    entities = [
+        "PERSON", "EMAIL_ADDRESS", "CREDIT_CARD", "DATE_TIME",
+        "LOCATION", "PHONE_NUMBER", "MONEY"
+    ]
 
     analysis = analyzer.analyze(
         text=text,
         entities=entities,
-        language="en",
-        score_threshold=0.3
+        language=lang,
+        score_threshold=0.4
     )
 
-    # Sort entities in reverse order to prevent replacement conflicts
     analysis = sorted(analysis, key=lambda x: x.start, reverse=True)
     
     entity_counters = defaultdict(int)
@@ -89,12 +94,15 @@ def anonymize_text(text):
 
     for entity in analysis:
         entity_text = text[entity.start:entity.end]
-        
-        # Normalize money values
-        if entity.entity_type == "MONEY":
-            entity_text = normalize_money_format(entity_text)
 
-        # Create unique key with entity type and text
+        # Normalization for money values
+        if entity.entity_type == "MONEY":
+            entity_text = re.sub(
+                r"(\d+)\s*([a-zA-Z]+)",
+                lambda m: f"{m.group(1)} {CURRENCY_NORMALIZATION.get(m.group(2).lower(), m.group(2).upper()}",
+                entity_text
+            )
+
         key = (entity_text, entity.entity_type)
         
         if key not in existing_mappings:
@@ -107,11 +115,10 @@ def anonymize_text(text):
                 "anonymized": anonymized_label
             })
 
-        # Replace in text
         anonymized_text = (
             anonymized_text[:entity.start] + 
             existing_mappings[key] + 
             anonymized_text[entity.end:]
         )
 
-    return anonymized_text, updated_analysis
+    return anonymized_text, updated_analysis, lang
