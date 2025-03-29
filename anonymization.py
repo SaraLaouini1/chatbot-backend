@@ -1,8 +1,12 @@
 from presidio_analyzer import AnalyzerEngine, PatternRecognizer, Pattern
+from presidio_analyzer.nlp_engine import SpacyNlpEngine  
 from collections import defaultdict
 import re
 
-analyzer = AnalyzerEngine()
+#analyzer = AnalyzerEngine()
+# Initialize with spaCy engine
+nlp_engine = SpacyNlpEngine(model_name="en_core_web_lg")  # <-- Add this
+analyzer = AnalyzerEngine(nlp_engine=nlp_engine)  # <-- Modified this
 
 # Dictionary to standardize currency names
 CURRENCY_NORMALIZATION = {
@@ -42,7 +46,14 @@ def enhance_recognizers():
         context=["card", "credit", "account"]
     )
 
-   
+    # Add new recognizer for spaCy entities
+    org_recognizer = PatternRecognizer(
+        supported_entity="ORG",
+        context=["company", "organization", "firm"],  # Context words boost detection
+        deny_list=["Acme Corp", "TechGlobal"]  # Add your custom organizations
+    )
+    
+    analyzer.registry.add_recognizer(org_recognizer)
     analyzer.registry.add_recognizer(credit_card_recognizer)
     analyzer.registry.add_recognizer(money_recognizer)
 
@@ -59,13 +70,18 @@ def anonymize_text(text):
     enhance_recognizers()
     
     entities = ["PERSON","PASSWORD", "EMAIL_ADDRESS", "CREDIT_CARD", "DATE_TIME", 
-               "LOCATION", "PHONE_NUMBER", "NRP", "MONEY", "URL", "IBAN_CODE", "IP_ADDRESS", "MEDICAL_LICENSE"]
+               "LOCATION", "PHONE_NUMBER", "NRP", "MONEY", "URL", "IBAN_CODE", "IP_ADDRESS",
+               
+                "ORG", "GPE", "LOC", "DATE", "NORP", 
+                "LANGUAGE", "EVENT", "LAW"
+               ]
 
     analysis = analyzer.analyze(
         text=text,
         entities=entities,
         language="en",
-        score_threshold=0.3
+        score_threshold=0.35,  # Lower threshold for NLP entities
+        return_decision_process=True  # Helps debug detection
     )
 
     # Sort entities in reverse order to prevent replacement conflicts
