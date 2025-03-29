@@ -52,13 +52,7 @@ def enhance_recognizers():
         context=["card", "credit", "account"]
     )
 
-    # Add new recognizer for spaCy entities
-    org_recognizer = PatternRecognizer(
-        supported_entity="ORG",
-        context=["company", "organization", "firm"],  # Context words boost detection
-        deny_list=[]  # Add your custom organizations
-    )
-
+   
 
     # Add to enhance_recognizers()
     password_pattern = Pattern(
@@ -73,7 +67,6 @@ def enhance_recognizers():
     )
 
     analyzer.registry.add_recognizer(password_recognizer)
-    analyzer.registry.add_recognizer(org_recognizer)
     analyzer.registry.add_recognizer(credit_card_recognizer)
     analyzer.registry.add_recognizer(money_recognizer)
 
