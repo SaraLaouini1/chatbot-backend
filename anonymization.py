@@ -1,4 +1,3 @@
-
 from presidio_analyzer import AnalyzerEngine, PatternRecognizer, Pattern
 from collections import defaultdict
 import re
@@ -43,43 +42,9 @@ def enhance_recognizers():
         context=["card", "credit", "account"]
     )
 
-    # CIN (Carte Nationale d'Identité)
-    cin_pattern = Pattern(
-        name="cin_pattern",
-        regex=r"\b[A-Z]{1,2}\d{5}\b",
-        score=0.85
-    )
-    cin_recognizer = PatternRecognizer(
-        supported_entity="CIN",
-        patterns=[cin_pattern],
-        context=["cin", "carte nationale", "identité", "national card"]
-    )
-
-    # Multilingual professional status recognizer (regex-based)
-    professional_status_recognizer = PatternRecognizer(
-        supported_entity="PROFESSIONAL_STATUS",
-        patterns=[
-            Pattern("status_en", r"\b(Full-time|Part-time|Contract|Freelance)\b", 0.7),
-            Pattern("status_fr", r"\b(CDI|CDD|Stage|Indépendant)\b", 0.7)
-        ],
-        context=["employment", "position", "role", "status",
-                 "emploi", "poste", "statut"]
-    )
-
-    analyzer.registry.add_recognizer(professional_status_recognizer)
-    analyzer.registry.add_recognizer(cin_recognizer)
+   
     analyzer.registry.add_recognizer(credit_card_recognizer)
     analyzer.registry.add_recognizer(money_recognizer)
-
-
-from langdetect import detect
-
-def detect_language(text):
-    """Détection de langue avec fallback en anglais"""
-    try:
-        return detect(text)
-    except:
-        return 'en'
 
 def normalize_money_format(money_str):
     """Normalize different currency representations to avoid duplicates."""
@@ -94,7 +59,7 @@ def anonymize_text(text):
     enhance_recognizers()
     
     entities = ["PERSON","PASSWORD", "EMAIL_ADDRESS", "CREDIT_CARD", "DATE_TIME", 
-               "LOCATION", "PHONE_NUMBER", "NRP", "MONEY", "PROFESSIONAL_STATUS"]
+               "LOCATION", "PHONE_NUMBER", "NRP", "MONEY"]
 
     analysis = analyzer.analyze(
         text=text,
