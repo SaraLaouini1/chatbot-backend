@@ -1,12 +1,18 @@
 from presidio_analyzer import AnalyzerEngine, PatternRecognizer, Pattern
-from presidio_analyzer.nlp_engine import SpacyNlpEngine  
+from presidio_analyzer.nlp_engine import NlpEngineProvider  # Changed import
 from collections import defaultdict
 import re
 
-#analyzer = AnalyzerEngine()
-# Initialize with spaCy engine
-nlp_engine = SpacyNlpEngine(model_name="en_core_web_lg")  # <-- Add this
-analyzer = AnalyzerEngine(nlp_engine=nlp_engine)  # <-- Modified this
+# Initialize spaCy engine CORRECTLY
+configuration = {
+    "nlp_engine_name": "spacy",
+    "models": [{"lang_code": "en", "model_name": "en_core_web_lg"}],
+}
+
+provider = NlpEngineProvider(nlp_configuration=configuration)
+nlp_engine = provider.create_engine()
+
+analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
 
 # Dictionary to standardize currency names
 CURRENCY_NORMALIZATION = {
@@ -50,9 +56,23 @@ def enhance_recognizers():
     org_recognizer = PatternRecognizer(
         supported_entity="ORG",
         context=["company", "organization", "firm"],  # Context words boost detection
-        deny_list=["Acme Corp", "TechGlobal"]  # Add your custom organizations
+        deny_list=[]  # Add your custom organizations
     )
-    
+
+
+    # Add to enhance_recognizers()
+    password_pattern = Pattern(
+        name="password_pattern",
+        regex=r"(?i)(password|passwd|pwd)[\s:]+([^\s]{8,})|\b[a-f0-9]{32}\b",
+        score=0.85
+    )
+    password_recognizer = PatternRecognizer(
+        supported_entity="PASSWORD",
+        patterns=[password_pattern],
+        context=["login", "credentials"]
+    )
+
+    analyzer.registry.add_recognizer(password_recognizer)
     analyzer.registry.add_recognizer(org_recognizer)
     analyzer.registry.add_recognizer(credit_card_recognizer)
     analyzer.registry.add_recognizer(money_recognizer)
@@ -72,16 +92,15 @@ def anonymize_text(text):
     entities = ["PERSON","PASSWORD", "EMAIL_ADDRESS", "CREDIT_CARD", "DATE_TIME", 
                "LOCATION", "PHONE_NUMBER", "NRP", "MONEY", "URL", "IBAN_CODE", "IP_ADDRESS",
                
-                "ORG", "GPE", "LOC", "DATE", "NORP", 
-                "LANGUAGE", "EVENT", "LAW"
+                "ORG", "NORP", "LANGUAGE", "EVENT", "LAW"
                ]
 
     analysis = analyzer.analyze(
         text=text,
         entities=entities,
         language="en",
-        score_threshold=0.35,  # Lower threshold for NLP entities
-        return_decision_process=True  # Helps debug detection
+        score_threshold=0.45,  # Better balance than 0.35
+        return_decision_process=False  # Disable for production
     )
 
     # Sort entities in reverse order to prevent replacement conflicts
