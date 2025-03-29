@@ -1,18 +1,8 @@
 from presidio_analyzer import AnalyzerEngine, PatternRecognizer, Pattern
-from presidio_analyzer.nlp_engine import NlpEngineProvider  # Changed import
 from collections import defaultdict
 import re
 
-# Initialize spaCy engine CORRECTLY
-configuration = {
-    "nlp_engine_name": "spacy",
-    "models": [{"lang_code": "en", "model_name": "en_core_web_lg"}],
-}
-
-provider = NlpEngineProvider(nlp_configuration=configuration)
-nlp_engine = provider.create_engine()
-
-analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
+analyzer = AnalyzerEngine()
 
 # Dictionary to standardize currency names
 CURRENCY_NORMALIZATION = {
@@ -53,29 +43,6 @@ def enhance_recognizers():
     )
 
    
-
-    # Add to enhance_recognizers()
-    # In enhance_recognizers()
-    password_pattern = Pattern(
-        name="password_pattern",
-        regex=r"""(?xi)
-            (?:password|passwd|pwd)\s*[:=]?\s*(\S{8,})      # Key-value pattern
-            |\b(?=\S*[a-z])(?=\S*[A-Z\d])(?=\S*[\W_])\S{8,}\b  # Complex standalone
-            |\b[a-fA-F0-9]{32}\b                             # MD5 hashes
-            |\b[a-fA-F0-9]{40}\b                             # SHA-1 hashes
-        """,
-        score=0.9
-    )
-    password_recognizer = PatternRecognizer(
-        supported_entity="PASSWORD",
-        patterns=[password_pattern],
-        context=["login", "credentials", "password"]
-    )
-
-  
-
-    
-    analyzer.registry.add_recognizer(password_recognizer)
     analyzer.registry.add_recognizer(credit_card_recognizer)
     analyzer.registry.add_recognizer(money_recognizer)
 
@@ -91,18 +58,14 @@ def normalize_money_format(money_str):
 def anonymize_text(text):
     enhance_recognizers()
     
-    entities = ["PERSON","PASSWORD", "EMAIL_ADDRESS", "CREDIT_CARD", "DATE_TIME", 
-               "LOCATION", "PHONE_NUMBER", "NRP", "MONEY", "URL", "IBAN_CODE", "IP_ADDRESS",
-               
-                "ORG", "NORP", "LANGUAGE", "EVENT", "LAW","GPE", "LOC"
-               ]
+    entities = ["PERSON", "EMAIL_ADDRESS", "CREDIT_CARD", "DATE_TIME", 
+               "LOCATION", "PHONE_NUMBER", "NRP", "MONEY", "URL"]
 
     analysis = analyzer.analyze(
         text=text,
         entities=entities,
         language="en",
-        score_threshold=0.3,  # Better balance than 0.35
-        return_decision_process=False  # Disable for production
+        score_threshold=0.3
     )
 
     # Sort entities in reverse order to prevent replacement conflicts
