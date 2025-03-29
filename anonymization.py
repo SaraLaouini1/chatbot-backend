@@ -1,8 +1,11 @@
-from presidio_analyzer import AnalyzerEngine, PatternRecognizer, Pattern
+from presidio_analyzer import AnalyzerEngine, PatternRecognizer, Pattern, TransformersRecognizer
+from presidio_analyzer.nlp_engine import SpacyNlpEngine
 from collections import defaultdict
 import re
 
-analyzer = AnalyzerEngine()
+# Initialize analyzer with a larger spaCy model for better entity recognition
+nlp_engine = SpacyNlpEngine(model_name="en_core_web_lg")
+analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
 
 # Dictionary to standardize currency names
 CURRENCY_NORMALIZATION = {
@@ -16,9 +19,9 @@ CURRENCY_NORMALIZATION = {
     "pounds": "GBP"
 }
 
-# Custom recognizers
+# Custom recognizers with enhanced patterns and ML integration
 def enhance_recognizers():
-    # Money format recognizer
+    # Money format recognizer (existing)
     money_pattern = Pattern(
         name="money_pattern",
         regex=r"(?i)(\d+)\s*(\$|€|£|USD|EUR|GBP|MAD)|\b(\d+)\s?(dollars|euros|pounds|dirhams|dh)\b",
@@ -30,7 +33,7 @@ def enhance_recognizers():
         context=["invoice", "amount", "payment"]
     )
 
-    # Custom Credit Card Recognizer (without Luhn check)
+    # Credit Card Recognizer (existing)
     credit_card_pattern = Pattern(
         name="credit_card_pattern",
         regex=r"\b\d{4}-\d{4}-\d{4}-\d{4}\b",
@@ -42,9 +45,43 @@ def enhance_recognizers():
         context=["card", "credit", "account"]
     )
 
-   
-    analyzer.registry.add_recognizer(credit_card_recognizer)
+    # Enhanced Password Recognizer with contextual matching
+    password_pattern = Pattern(
+        name="password_pattern",
+        regex=r"(?i)(?<=password\s*[:=]\s*)(\S+)|(?<=passwd\s*[:=]\s*)(\S+)|(?<=pwd\s*[:=]\s*)(\S+)",
+        score=0.85
+    )
+    password_recognizer = PatternRecognizer(
+        supported_entity="PASSWORD",
+        patterns=[password_pattern],
+        context=["password", "passwd", "pwd", "credentials", "login"]
+    )
+
+    # ID Recognizer with alphanumeric pattern and context
+    id_pattern = Pattern(
+        name="id_pattern",
+        regex=r"\b(?=\w*\d)(?=\w*[A-Za-z])\w{8,20}\b",
+        score=0.7
+    )
+    id_recognizer = PatternRecognizer(
+        supported_entity="ID",
+        patterns=[id_pattern],
+        context=["id", "identifier", "customer", "account", "user"]
+    )
+
+    # Add all recognizers
     analyzer.registry.add_recognizer(money_recognizer)
+    analyzer.registry.add_recognizer(credit_card_recognizer)
+    analyzer.registry.add_recognizer(password_recognizer)
+    analyzer.registry.add_recognizer(id_recognizer)
+
+    # Add transformer-based recognizer for ML-powered detection
+    try:
+        transformers_recognizer = TransformersRecognizer()
+        transformers_recognizer.supported_entities = ["PASSWORD", "ID"]
+        analyzer.registry.add_recognizer(transformers_recognizer)
+    except ImportError:
+        print("Transformers library not installed. Skipping transformer-based recognition.")
 
 def normalize_money_format(money_str):
     """Normalize different currency representations to avoid duplicates."""
@@ -58,8 +95,10 @@ def normalize_money_format(money_str):
 def anonymize_text(text):
     enhance_recognizers()
     
-    entities = ["PERSON","PASSWORD", "EMAIL_ADDRESS", "CREDIT_CARD", "DATE_TIME", 
-               "LOCATION", "PHONE_NUMBER", "NRP", "MONEY"]
+    entities = ["PERSON", "PASSWORD", "ID", "EMAIL_ADDRESS", "CREDIT_CARD", "DATE_TIME", 
+               "LOCATION", "PHONE_NUMBER", "NRP", "MONEY", "IBAN_CODE", "IP_ADDRESS", 
+               "MEDICAL_LICENSE", "URL", "US_BANK_NUMBER", "US_DRIVER_LICENSE", 
+               "US_PASSPORT", "US_SSN"]
 
     analysis = analyzer.analyze(
         text=text,
