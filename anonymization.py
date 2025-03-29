@@ -99,7 +99,7 @@ def anonymize_text(text):
         if entity.entity_type == "MONEY":
             entity_text = re.sub(
                 r"(\d+)\s*([a-zA-Z]+)",
-                lambda m: f"{m.group(1)} {CURRENCY_NORMALIZATION.get(m.group(2).lower(), m.group(2).upper()}",
+                lambda m: f"{m.group(1)} {CURRENCY_NORMALIZATION.get(m.group(2).lower(), m.group(2).upper())}",
                 entity_text
             )
 
