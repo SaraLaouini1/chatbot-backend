@@ -60,7 +60,7 @@ def anonymize_text(text):
     
     entities = ["PERSON","PASSWORD", "EMAIL_ADDRESS", "CREDIT_CARD", "DATE_TIME", 
                "LOCATION", "PHONE_NUMBER", "NRP", "MONEY", "IBAN_CODE", "IP_ADDRESS", "MEDICAL_LICENSE",
-               "URL", "US_BANK_NUMBER", "US_DRIVER_LICENSE", "US_PASSPORT", "US_SSN"]
+               "URL"]
 
     analysis = analyzer.analyze(
         text=text,
