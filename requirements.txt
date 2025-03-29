@@ -20,3 +20,4 @@ https://github.com/explosion/spacy-models/releases/download/fr_core_news_md-3.7.
 transformers
 torch
 langid
+datasets
