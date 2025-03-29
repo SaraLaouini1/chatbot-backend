@@ -1,6 +1,8 @@
 import os
 from openai import OpenAI
 from langdetect import detect
+from langid import classify  # More reliable for short text
+
 
 
 def send_to_llm(prompt, placeholders):
@@ -8,7 +10,9 @@ def send_to_llm(prompt, placeholders):
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
         # Detect language of the prompt
-        language = detect(prompt)
+        #language = detect(prompt)
+        language, _ = classify(prompt)  # Returns ('fr', confidence)
+
 
         # Define language-specific instructions
         if language == "fr":
