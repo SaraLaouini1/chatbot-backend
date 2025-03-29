@@ -72,14 +72,9 @@ def enhance_recognizers():
         context=["login", "credentials", "password"]
     )
 
-    org_recognizer = PatternRecognizer(
-        supported_entity="ORG",
-        context=["company", "organization", "firm"],
-        deny_list=[]
-    )
+  
 
     
-    analyzer.registry.add_recognizer(org_recognizer) 
     analyzer.registry.add_recognizer(password_recognizer)
     analyzer.registry.add_recognizer(credit_card_recognizer)
     analyzer.registry.add_recognizer(money_recognizer)
