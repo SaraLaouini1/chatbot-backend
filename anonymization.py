@@ -2,7 +2,7 @@
 # pip install presidio-analyzer transformers torch datasets
 
 from presidio_analyzer import AnalyzerEngine
-from presidio_analyzer.transformers_recognizer import TransformersRecognizer
+from presidio_analyzer import TransformersRecognizer
 from presidio_analyzer.nlp_engine import TransformersNlpEngine
 from transformers import AutoTokenizer, AutoModelForTokenClassification, TrainingArguments, Trainer
 from datasets import Dataset
