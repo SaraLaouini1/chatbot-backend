@@ -17,7 +17,11 @@ langdetect
 spacy
 https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.7.1/en_core_web_lg-3.7.1-py3-none-any.whl
 https://github.com/explosion/spacy-models/releases/download/fr_core_news_md-3.7.0/fr_core_news_md-3.7.0-py3-none-any.whl
-transformers
+
 torch
 langid
 datasets
+
+presidio-analyzer[transformers]>=2.2.34
+transformers>=4.30.0
+sentencepiece
