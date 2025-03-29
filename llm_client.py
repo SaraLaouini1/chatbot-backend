@@ -1,7 +1,6 @@
 import os
 from openai import OpenAI
 from langdetect import detect
-from langid import classify  # More reliable for short text
 
 
 
@@ -10,8 +9,7 @@ def send_to_llm(prompt, placeholders):
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
         # Detect language of the prompt
-        #language = detect(prompt)
-        language, _ = classify(prompt)  # Returns ('fr', confidence)
+        language = detect(prompt)
 
 
         # Define language-specific instructions
@@ -35,6 +33,7 @@ def send_to_llm(prompt, placeholders):
         9. Respond in the same language as the input (either English or French)
         """
 
+        
         # Send the request to OpenAI
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
