@@ -1,29 +1,23 @@
+
 from flask import Flask, request, jsonify
 from anonymization import anonymize_text
 from llm_client import send_to_llm
 import json
+
 from flask_cors import CORS
 from dotenv import load_dotenv
 import os
 import re
-from flask_limiter import Limiter
 
 load_dotenv()
 
 app = Flask(__name__)
 
-# Rate limiting for security
-limiter = Limiter(
-    app=app,
-    key_func=lambda: request.headers.get('X-Real-IP', request.remote_addr)
-)
-
-# Render-optimized CORS
 CORS(app, resources={
     r"/process": {
         "origins": [
-            "https://your-frontend-name.onrender.com",
-            "https://chatbot-login.onrender.com"
+            "https://chatbot-login.onrender.com",
+            "http://localhost:5173"
         ],
         "methods": ["POST", "OPTIONS"],
         "allow_headers": ["Content-Type"]
@@ -44,30 +38,48 @@ def handle_get():
     return jsonify({"error": "Use POST method"}), 405
 
 @app.route('/process', methods=['POST'])
-@limiter.limit("200/hour")
 def process_request():
     try:
         data = request.json
         original_prompt = data.get("prompt", "")
 
+        # 🔹 Step 1: Anonymization
         anonymized_prompt, mapping = anonymize_text(original_prompt)
+
+        # Validate placeholders in the anonymized prompt
+        #expected_placeholders = {item["anonymized"] for item in mapping}
+        #found_placeholders = set(re.findall(r"<\w+_\d+>", anonymized_prompt))
         
+        #if expected_placeholders != found_placeholders:
+            #raise ValueError(f"Placeholder mismatch. Expected: {expected_placeholders}, Found: {found_placeholders}")
+
+        # ✅ Better debug prints for the anonymized prompt and mapping
         print("\n📌 **Anonymized Prompt:**\n", anonymized_prompt)
         print("\n📌 **Mapping:**\n", json.dumps(mapping, indent=2))
 
+        # 🔹 Step 2: Send to LLM
         mapped_placeholders = [item["anonymized"] for item in mapping]
-        llm_raw_response = send_to_llm(anonymized_prompt, mapped_placeholders)
+        llm_raw_response  = send_to_llm(
+            anonymized_prompt,
+            placeholders=mapped_placeholders  # Pass placeholders for proper response handling
+        )
 
-        print("\n📌 **LLM Response Before Cleaning:**\n", llm_raw_response)
+        # ✅ Debug print before recontextualization
+        print("\n📌 **LLM Response Before Cleaning:**\n", llm_raw_response )
 
+        # 🔹 Step 3: Recontextualization - Replace anonymized placeholders with original values
         llm_after_recontext = llm_raw_response
         for item in mapping:
             placeholder = re.escape(item["anonymized"])
             llm_after_recontext = re.sub(rf'{placeholder}', item["original"], llm_after_recontext)
 
-        llm_final_response = re.sub(r'<\w+_\d+>', '', llm_after_recontext)
+        # ✅ Final cleanup of unnecessary placeholders
+        llm_final_response  = re.sub(r'<\w+_\d+>', '', llm_after_recontext)
+
+        # ✅ Final debug print of cleaned response
         print("\n📌 **Final Response (After Cleaning):**\n", llm_final_response)
 
+        # 🔹 Step 4: Return response
         return jsonify({
             "response": llm_final_response,
             "llm_raw": llm_raw_response,
