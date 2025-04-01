@@ -16,6 +16,24 @@ CURRENCY_NORMALIZATION = {
     "pounds": "GBP"
 }
 
+
+def filter_overlapping_entities(entities):
+    # Sort entities by starting index, then by longer span
+    entities = sorted(entities, key=lambda x: (x.start, -x.end))
+    filtered = []
+    last_end = -1
+    for ent in entities:
+        if ent.start >= last_end:
+            filtered.append(ent)
+            last_end = ent.end
+        else:
+            # Overlap detected; optionally choose the entity with a higher score.
+            if ent.score > filtered[-1].score:
+                filtered[-1] = ent
+                last_end = ent.end
+    return filtered
+
+
 # Custom recognizers
 def enhance_recognizers():
     # Money format recognizer
@@ -58,32 +76,31 @@ def normalize_money_format(money_str):
 def anonymize_text(text):
     enhance_recognizers()
     
-    entities = ["PERSON", "EMAIL_ADDRESS", "CREDIT_CARD", "DATE_TIME", 
-               "LOCATION", "PHONE_NUMBER", "NRP", "MONEY", "URL"]
-
-    analysis = analyzer.analyze(
+    entities = analyzer.analyze(
         text=text,
-        entities=entities,
+        entities=["PERSON", "EMAIL_ADDRESS", "CREDIT_CARD", "DATE_TIME", 
+                  "LOCATION", "PHONE_NUMBER", "NRP", "MONEY", "URL"],
         language="en",
         score_threshold=0.3
     )
-
-    # Sort entities in reverse order to prevent replacement conflicts
-    analysis = sorted(analysis, key=lambda x: x.start, reverse=True)
+    
+    # Filter out overlapping entities
+    entities = filter_overlapping_entities(entities)
+    
+    # Sort entities in reverse order to avoid index shifts
+    entities = sorted(entities, key=lambda x: x.start, reverse=True)
     
     entity_counters = defaultdict(int)
     updated_analysis = []
     existing_mappings = {}
     anonymized_text = text
 
-    for entity in analysis:
+    for entity in entities:
         entity_text = text[entity.start:entity.end]
         
-        # Normalize money values
         if entity.entity_type == "MONEY":
             entity_text = normalize_money_format(entity_text)
-
-        # Create unique key with entity type and text
+        
         key = (entity_text, entity.entity_type)
         
         if key not in existing_mappings:
@@ -95,12 +112,13 @@ def anonymize_text(text):
                 "original": entity_text,
                 "anonymized": anonymized_label
             })
-
-        # Replace in text
+        
+        # Replace entity in the text using slicing in reverse order
         anonymized_text = (
-            anonymized_text[:entity.start] + 
-            existing_mappings[key] + 
+            anonymized_text[:entity.start] +
+            existing_mappings[key] +
             anonymized_text[entity.end:]
         )
-
+    
     return anonymized_text, updated_analysis
+
