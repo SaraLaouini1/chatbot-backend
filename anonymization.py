@@ -49,9 +49,8 @@ def enhance_recognizers():
     # Money format recognizer
     money_pattern = Pattern(
         name="money_pattern",
-        # Require a currency symbol or currency word around the number
-        regex=r"(?i)(?<!#)\b(\d+)\s*(\$|€|£|USD|EUR|GBP|MAD)\b|\b(\d+)\s?(dollars|euros|pounds|dirhams|dh)\b",
-        score=0.99
+        regex=r"(?i)(?<!#)\b(\d+)\s*(\$|€|£|USD|EUR|GBP|MAD)(?!\d)\b|\b(\d+)\s?(dollars|euros|pounds|dirhams|dh)\b",
+        score=0.9
     )
 
     money_recognizer = PatternRecognizer(
