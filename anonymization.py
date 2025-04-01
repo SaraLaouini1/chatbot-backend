@@ -80,7 +80,7 @@ def anonymize_text(text):
     entities = analyzer.analyze(
         text=text,
         entities=["PERSON", "EMAIL_ADDRESS", "CREDIT_CARD", "DATE_TIME",
-                  "LOCATION", "PHONE_NUMBER", "NRP", "MONEY", "URL"],
+                  "LOCATION", "PHONE_NUMBER", "NRP", "MONEY", "URL", "IP_ADDRESS"],
         language="en",
         score_threshold=0.3
     )
