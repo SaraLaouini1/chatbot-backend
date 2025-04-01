@@ -16,6 +16,14 @@ CURRENCY_NORMALIZATION = {
     "pounds": "GBP"
 }
 
+def remove_default_money_recognizer():
+    # Gather all recognizers that detect MONEY
+    money_recognizers = [r for r in analyzer.registry.recognizers 
+                         if "MONEY" in r.supported_entities]
+    # Remove each one
+    for rec in money_recognizers:
+        analyzer.registry.remove_recognizer(rec)
+
 
 def filter_overlapping_entities(entities):
     # Sort entities by starting index, then by longer span
@@ -36,13 +44,14 @@ def filter_overlapping_entities(entities):
 
 # Custom recognizers
 def enhance_recognizers():
+    remove_default_money_recognizer()  # Remove any built-in money recognizers
+    
     # Money format recognizer
-
     money_pattern = Pattern(
         name="money_pattern",
         # Require a currency symbol or currency word around the number
         regex=r"(?i)(?<!#)\b(\d+)\s*(\$|€|£|USD|EUR|GBP|MAD)\b|\b(\d+)\s?(dollars|euros|pounds|dirhams|dh)\b",
-        score=0.9
+        score=0.99
     )
 
     money_recognizer = PatternRecognizer(
