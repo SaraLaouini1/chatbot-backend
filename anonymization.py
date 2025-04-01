@@ -37,11 +37,14 @@ def filter_overlapping_entities(entities):
 # Custom recognizers
 def enhance_recognizers():
     # Money format recognizer
+
     money_pattern = Pattern(
         name="money_pattern",
-        regex=r"(?i)(\d+)\s*(\$|€|£|USD|EUR|GBP|MAD)|\b(\d+)\s?(dollars|euros|pounds|dirhams|dh)\b",
+        # Require a currency symbol or currency word around the number
+        regex=r"(?i)(?<!#)\b(\d+)\s*(\$|€|£|USD|EUR|GBP|MAD)\b|\b(\d+)\s?(dollars|euros|pounds|dirhams|dh)\b",
         score=0.9
     )
+
     money_recognizer = PatternRecognizer(
         supported_entity="MONEY",
         patterns=[money_pattern],
