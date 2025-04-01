@@ -17,13 +17,11 @@ CURRENCY_NORMALIZATION = {
 }
 
 def remove_default_money_recognizer():
-    # Gather all recognizers that detect MONEY
-    money_recognizers = [r for r in analyzer.registry.recognizers 
-                         if "MONEY" in r.supported_entities]
-    # Remove each one
-    for rec in money_recognizers:
-        analyzer.registry.remove_recognizer(rec)
-
+    # Remove all default money recognizers
+    default_recognizers = analyzer.registry.recognizers
+    for rec in default_recognizers:
+        if "MONEY" in rec.supported_entities:
+            analyzer.registry.remove_recognizer(rec)
 
 def filter_overlapping_entities(entities):
     # Sort entities by starting index, then by longer span
@@ -35,25 +33,34 @@ def filter_overlapping_entities(entities):
             filtered.append(ent)
             last_end = ent.end
         else:
-            # Overlap detected; optionally choose the entity with a higher score.
             if ent.score > filtered[-1].score:
                 filtered[-1] = ent
                 last_end = ent.end
     return filtered
 
-
-# Custom recognizers
 def enhance_recognizers():
-    remove_default_money_recognizer()  # Remove any built-in money recognizers
+    remove_default_money_recognizer()
     
-    # Money format recognizer
+    # Strict money pattern with currency validation
     money_pattern = Pattern(
         name="money_pattern",
-        regex=r"(?i)(?:(?<=\s)|(?<=^))(?:(?:\$|€|£|USD|EUR|GBP|MAD)\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?\s*(?:\$|€|£|USD|EUR|GBP|MAD)|\d+(?:\.\d+)?\s*(?:dollars|euros|pounds|dirhams|dh))\b",
-        score=0.99
+        regex=r"""(?xi)
+        (?<!#)                   # Negative lookbehind for ticket numbers
+        (?:                      # Non-capturing group for whole pattern
+          (?:                      # Currency symbol prefix
+            (?:€|\$|£|USD|EUR|GBP|MAD)\s*
+            \d{1,3}(?:,\d{3})*(?:\.\d{2})?  # Integer/Decimal amounts
+          )
+          |                       # OR
+          (?:                      # Currency word suffix
+            \d{1,3}(?:,\d{3})*(?:\.\d{2})?\s*
+            (?:dollars|euros|pounds|dirhams|dh)\b
+          )
+        )
+        (?!\d)                   # Negative lookahead for trailing digits
+        """,
+        score=0.95
     )
-
-
 
     money_recognizer = PatternRecognizer(
         supported_entity="MONEY",
@@ -61,7 +68,7 @@ def enhance_recognizers():
         context=["invoice", "amount", "payment"]
     )
 
-    # Custom Credit Card Recognizer (without Luhn check)
+    # Credit Card Recognizer
     credit_card_pattern = Pattern(
         name="credit_card_pattern",
         regex=r"\b\d{4}-\d{4}-\d{4}-\d{4}\b",
@@ -73,12 +80,11 @@ def enhance_recognizers():
         context=["card", "credit", "account"]
     )
 
-   
     analyzer.registry.add_recognizer(credit_card_recognizer)
     analyzer.registry.add_recognizer(money_recognizer)
 
 def normalize_money_format(money_str):
-    """Normalize different currency representations to avoid duplicates."""
+    """Normalize currency representations"""
     match = re.search(r"(\d+)\s*([a-zA-Z]+)", money_str)
     if match:
         amount, currency = match.groups()
@@ -91,16 +97,16 @@ def anonymize_text(text):
     
     entities = analyzer.analyze(
         text=text,
-        entities=["PERSON", "EMAIL_ADDRESS", "CREDIT_CARD", "DATE_TIME", 
+        entities=["PERSON", "EMAIL_ADDRESS", "CREDIT_CARD", "DATE_TIME",
                   "LOCATION", "PHONE_NUMBER", "NRP", "MONEY", "URL"],
         language="en",
         score_threshold=0.3
     )
     
-    # Filter out overlapping entities
+    # Filter overlapping entities
     entities = filter_overlapping_entities(entities)
     
-    # Sort entities in reverse order to avoid index shifts
+    # Reverse sort for replacement
     entities = sorted(entities, key=lambda x: x.start, reverse=True)
     
     entity_counters = defaultdict(int)
@@ -112,6 +118,9 @@ def anonymize_text(text):
         entity_text = text[entity.start:entity.end]
         
         if entity.entity_type == "MONEY":
+            # Additional validation for money patterns
+            if not re.search(r"(?:€|\$|£|USD|EUR|GBP|MAD|dollars|euros|pounds|dirhams|dh)", entity_text, re.I):
+                continue  # Skip false positives
             entity_text = normalize_money_format(entity_text)
         
         key = (entity_text, entity.entity_type)
@@ -126,12 +135,12 @@ def anonymize_text(text):
                 "anonymized": anonymized_label
             })
         
-        # Replace entity in the text using slicing in reverse order
         anonymized_text = (
             anonymized_text[:entity.start] +
             existing_mappings[key] +
             anonymized_text[entity.end:]
         )
     
+    
+    
     return anonymized_text, updated_analysis
-
