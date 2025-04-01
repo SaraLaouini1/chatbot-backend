@@ -41,9 +41,10 @@ def enhance_recognizers():
     # Simplified money pattern with strict boundaries
     money_pattern = Pattern(
         name="money_pattern",
-        regex=r"(?i)(?<!#)(?:€|\$|£|USD|EUR|GBP|MAD)\s*\d{1,3}(?:,\d{3})*(?:\.\d{2})?|\d{1,3}(?:,\d{3})*(?:\.\d{2})?\s*(?:dollars|euros|pounds|dirhams|dh)\b(?!\d)",
+        regex=r"(?i)(?<!#)(?:€|\$|£|USD|EUR|GBP|MAD)\s*\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:,\d{3})*(?:\.\d+)?\s*(?:dollars|euros|pounds|dirhams|dh)\b(?!\d)",
         score=0.95
     )
+
 
     money_recognizer = PatternRecognizer(
         supported_entity="MONEY",
