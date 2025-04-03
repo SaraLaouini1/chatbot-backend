@@ -25,10 +25,12 @@ app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
 db.init_app(app)
 jwt = JWTManager(app)
 migrate = Migrate(app, db)  # Initialize Flask-Migrate
+
+
 CORS(app, resources={
-    r"/process": {
+    r"/*": {  # Allow all routes
         "origins": [
-            "https://chatbot-login.onrender.com",
+            "https://chatbot-login.onrender.com",  
             "http://localhost:5173"
         ],
         "allow_headers": ["Authorization", "Content-Type"],
@@ -36,20 +38,18 @@ CORS(app, resources={
     }
 })
 
-# No need for manual table creation; use migrations instead.
 
-# Serve static files (for your frontend)
+
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve(path):
-    if path.startswith('api/'):  # Skip API routes
+    # Always serve index.html for non-API routes
+    if path.startswith('api/') or any(path.startswith(f'{p}/') for p in ['register', 'login', 'process']):
         return jsonify({"error": "Not found"}), 404
+        
+    return send_from_directory(app.static_folder, 'index.html')
 
-    static_file = os.path.join(app.static_folder, path)
-    if os.path.exists(static_file) and path != "":
-        return send_from_directory(app.static_folder, path)
-    else:
-        return send_from_directory(app.static_folder, 'index.html')
+
 
 # Health check endpoint
 @app.route('/health', methods=['GET'])
