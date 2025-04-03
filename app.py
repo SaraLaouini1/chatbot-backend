@@ -38,6 +38,10 @@ CORS(app, resources={
     }
 })
 
+@app.before_first_request
+def create_tables():
+    db.create_all()
+
 # Add after CORS config
 @app.errorhandler(404)
 def not_found(e):
@@ -46,9 +50,11 @@ def not_found(e):
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve(path):
-    if any(path.startswith(f'api/') for _ in ['']):  # Block direct api access
-        return jsonify({"error": "Not found"}), 404
-    return send_from_directory(app.static_folder, 'index.html')
+    static_dir = os.path.join(app.root_path, app.static_folder)
+    if path and os.path.exists(os.path.join(static_dir, path)):
+        return send_from_directory(static_dir, path)
+    return send_from_directory(static_dir, 'index.html')
+
 
 
 # Health check endpoint
