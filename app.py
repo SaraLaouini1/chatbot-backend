@@ -13,7 +13,7 @@ from llm_client import send_to_llm
 
 load_dotenv()
 
-app = Flask(__name__, static_folder='./dist', static_url_path='')
+app = Flask(__name__, static_folder='../dist', static_url_path='')
 
 
 # Configure app with environment variables
@@ -29,7 +29,10 @@ migrate = Migrate(app, db)  # Initialize Flask-Migrate
 
 CORS(app, resources={
     r"/*": {  # Allow all routes
-        "origins": "*",
+        "origins": [
+            "https://chatbot-login.onrender.com",
+            "http://localhost:5173"
+        ],
         "allow_headers": ["Authorization", "Content-Type"],
         "methods": ["GET", "POST", "PUT", "DELETE"]
     }
