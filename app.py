@@ -2,6 +2,7 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
+from flask_migrate import Migrate  # Import Flask-Migrate
 from dotenv import load_dotenv
 import os, re, json
 
@@ -14,7 +15,7 @@ load_dotenv()
 
 app = Flask(__name__, static_folder='../dist', static_url_path='')
 
-# Configure app
+# Configure app with environment variables
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
@@ -22,6 +23,7 @@ app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
 # Initialize extensions
 db.init_app(app)
 jwt = JWTManager(app)
+migrate = Migrate(app, db)  # Initialize Flask-Migrate
 CORS(app, resources={
     r"/process": {
         "origins": [
@@ -33,10 +35,7 @@ CORS(app, resources={
     }
 })
 
-# Create tables (ensure this runs only once per deployment)
-@app.before_first_request
-def create_tables():
-    db.create_all()
+# No need for manual table creation; use migrations instead.
 
 # Serve static files (for your frontend)
 @app.route('/', defaults={'path': ''})
