@@ -30,8 +30,8 @@ CORS(app, resources={
             "https://chatbot-login.onrender.com",
             "http://localhost:5173"
         ],
-        "methods": ["POST", "OPTIONS"],
-        "allow_headers": ["Content-Type"]
+        "allow_headers": ["Authorization", "Content-Type"],
+        "methods": ["GET", "POST", "PUT", "DELETE"]
     }
 })
 
