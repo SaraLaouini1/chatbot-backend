@@ -38,26 +38,26 @@ CORS(app, resources={
     }
 })
 
-
+# Add after CORS config
+@app.errorhandler(404)
+def not_found(e):
+    return send_from_directory(app.static_folder, 'index.html')
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve(path):
-    # Always serve index.html for non-API routes
-    if path.startswith('api/') or any(path.startswith(f'{p}/') for p in ['register', 'login', 'process']):
+    if any(path.startswith(f'api/') for _ in ['']):  # Block direct api access
         return jsonify({"error": "Not found"}), 404
-        
     return send_from_directory(app.static_folder, 'index.html')
 
 
-
 # Health check endpoint
-@app.route('/health', methods=['GET'])
+@app.route('/api/health', methods=['GET'])
 def health_check():
     return jsonify({"status": "active"}), 200
 
 # Registration endpoint
-@app.route('/register', methods=['POST'])
+@app.route('/api/register', methods=['POST'])
 def register():
     data = request.get_json()
     username = data.get("username", "").strip()
@@ -74,7 +74,7 @@ def register():
     return jsonify({"access_token": token}), 201
 
 # Login endpoint
-@app.route('/login', methods=['POST'])
+@app.route('/api/login', methods=['POST'])
 def login():
     data = request.get_json()
     username = data.get("username", "").strip()
@@ -88,7 +88,7 @@ def login():
         return jsonify({"error": "Invalid credentials"}), 401
 
 # Protected process endpoint (example)
-@app.route('/process', methods=['POST'])
+@app.route('/api/process', methods=['POST'])
 @jwt_required()  # Require a valid JWT token
 def process_request():
     try:
