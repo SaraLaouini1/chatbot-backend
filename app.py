@@ -13,7 +13,9 @@ from llm_client import send_to_llm
 
 load_dotenv()
 
-app = Flask(__name__, static_folder='../dist', static_url_path='')
+base_dir = os.path.abspath(os.path.dirname(__file__))
+app = Flask(__name__, static_folder=os.path.join(base_dir, 'dist'), static_url_path='')
+
 
 
 # Configure app with environment variables
