@@ -13,7 +13,7 @@ from llm_client import send_to_llm
 
 load_dotenv()
 
-app = Flask(__name__, static_folder='dist', static_url_path='')
+app = Flask(__name__, static_folder='../dist', static_url_path='')
 
 
 # Configure app with environment variables
@@ -29,29 +29,22 @@ migrate = Migrate(app, db)  # Initialize Flask-Migrate
 
 CORS(app, resources={
     r"/*": {  # Allow all routes
-        "origins": [
-            "https://chatbot-login.onrender.com",  
-            "http://localhost:5173"
-        ],
+        "origins": "*",
         "allow_headers": ["Authorization", "Content-Type"],
         "methods": ["GET", "POST", "PUT", "DELETE"]
     }
 })
 
 
-# Add after CORS config
-@app.errorhandler(404)
-def not_found(e):
+
+
+@app.route('/')
+def index():
     return send_from_directory(app.static_folder, 'index.html')
 
-@app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
-def serve(path):
-    static_dir = os.path.join(app.root_path, app.static_folder)
-    if path and os.path.exists(os.path.join(static_dir, path)):
-        return send_from_directory(static_dir, path)
-    return send_from_directory(static_dir, 'index.html')
-
+def catch_all(path):
+    return send_from_directory(app.static_folder, 'index.html')
 
 
 # Health check endpoint
