@@ -38,9 +38,6 @@ CORS(app, resources={
     }
 })
 
-@app.before_first_request
-def create_tables():
-    db.create_all()
 
 # Add after CORS config
 @app.errorhandler(404)
