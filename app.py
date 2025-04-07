@@ -29,7 +29,7 @@ app = Flask(__name__, static_folder='../dist', static_url_path='')  # Update thi
 
 # Update CORS configuration at the top of app.py
 CORS(app, resources={
-    r"/api/*": {  # Apply to all API endpoints
+    r"/*": {  
         "origins": [
             "https://chatbot-login.onrender.com",
             "http://localhost:5173"
