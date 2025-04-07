@@ -52,22 +52,6 @@ def handle_get():
 @app.route('/process', methods=['POST'])
 def process_request():
     try:
-        # Authentication
-        auth_header = request.headers.get('Authorization')
-        if not auth_header or not auth_header.startswith('Bearer '):
-            return jsonify({"error": "Missing token"}), 401
-            
-        try:
-            token = json.loads(auth_header[7:])
-            if time.time() > token.get('expires', 0):
-                return jsonify({"error": "Token expired"}), 401
-            username = token['username']
-        except:
-            return jsonify({"error": "Invalid token"}), 401
-
-        # Get existing history
-        user_history = conversation_histories.get(username, [])
-        
         data = request.json
         original_prompt = data.get("prompt", "")
 
