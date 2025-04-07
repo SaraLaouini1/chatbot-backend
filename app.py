@@ -93,7 +93,8 @@ def process_request():
         mapped_placeholders = [item["anonymized"] for item in mapping]
         llm_raw_response  = send_to_llm(
             anonymized_prompt,
-            placeholders=mapped_placeholders  # Pass placeholders for proper response handling
+            placeholders=mapped_placeholders,
+            history=user_history
         )
 
         # ✅ Debug print before recontextualization
