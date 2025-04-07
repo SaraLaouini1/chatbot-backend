@@ -25,14 +25,18 @@ load_dotenv()
 app = Flask(__name__, static_folder='../dist', static_url_path='')  # Update this line
 
 
+
+
+# Update CORS configuration at the top of app.py
 CORS(app, resources={
-    r"/process": {
+    r"/api/*": {  # Apply to all API endpoints
         "origins": [
             "https://chatbot-login.onrender.com",
             "http://localhost:5173"
         ],
-        "methods": ["POST", "OPTIONS"],
-        "allow_headers": ["Content-Type"]
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": True
     }
 })
 
@@ -150,7 +154,7 @@ def process_request():
         print("❌ Error:", str(e))
         return jsonify({"error": str(e)}), 500
 
-@app.route('/history', methods=['POST'])
+@app.route('/history', methods=['GET'])
 def get_history():
     try:
         auth_header = request.headers.get('Authorization')
