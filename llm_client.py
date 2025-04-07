@@ -1,3 +1,6 @@
+import os
+from openai import OpenAI
+
 def send_to_llm(prompt: str, placeholders: list, history: list):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     
