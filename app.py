@@ -14,10 +14,6 @@ import time
 from collections import defaultdict
 from datetime import datetime
 
-# Add above existing imports
-conversation_histories = defaultdict(list)
-MAX_HISTORY_LENGTH = 20
-TOKEN_EXPIRATION = 3600  # 1 hour in seconds
 
 load_dotenv()
 
@@ -93,8 +89,7 @@ def process_request():
         mapped_placeholders = [item["anonymized"] for item in mapping]
         llm_raw_response  = send_to_llm(
             anonymized_prompt,
-            placeholders=mapped_placeholders,
-            history=user_history
+            placeholders=mapped_placeholders
         )
 
         # ✅ Debug print before recontextualization
@@ -112,22 +107,6 @@ def process_request():
         # ✅ Final debug print of cleaned response
         print("\n📌 **Final Response (After Cleaning):**\n", llm_final_response)
 
-        # Update history
-        user_history.append({
-            "isUser": True,
-            "text": anonymized_prompt,
-            "timestamp": datetime.now().isoformat(),
-            "details": {"anonymizedPrompt": anonymized_prompt}
-        })
-        user_history.append({
-            "isUser": False,
-            "text": llm_raw_response,
-            "timestamp": datetime.now().isoformat(),
-            "details": {"raw": llm_raw_response}
-        })
-        
-        # Maintain history length
-        conversation_histories[username] = user_history[-MAX_HISTORY_LENGTH:]
 
 
         # 🔹 Step 4: Return response
@@ -143,22 +122,6 @@ def process_request():
         print("❌ Error:", str(e))
         return jsonify({"error": str(e)}), 500
 
-@app.route('/history', methods=['GET'])
-def get_history():
-    try:
-        auth_header = request.headers.get('Authorization')
-        if not auth_header or not auth_header.startswith('Bearer '):
-            return jsonify({"error": "Unauthorized"}), 401
-
-        token = json.loads(auth_header[7:])
-        if time.time() > token.get('expires', 0):
-            return jsonify({"error": "Token expired"}), 401
-            
-        username = token['username']
-        return jsonify({"history": conversation_histories.get(username, [])})
-        
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)))
