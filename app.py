@@ -3,13 +3,21 @@ from flask import Flask, request, jsonify
 from anonymization import anonymize_text
 from llm_client import send_to_llm
 from flask import Flask, request, jsonify, send_from_directory
-
 import json
 
 from flask_cors import CORS
 from dotenv import load_dotenv
 import os
 import re
+
+import time
+from collections import defaultdict
+from datetime import datetime
+
+# Add above existing imports
+conversation_histories = defaultdict(list)
+MAX_HISTORY_LENGTH = 20
+TOKEN_EXPIRATION = 3600  # 1 hour in seconds
 
 load_dotenv()
 
@@ -56,6 +64,22 @@ def handle_get():
 @app.route('/process', methods=['POST'])
 def process_request():
     try:
+        # Authentication
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({"error": "Missing token"}), 401
+            
+        try:
+            token = json.loads(auth_header[7:])
+            if time.time() > token.get('expires', 0):
+                return jsonify({"error": "Token expired"}), 401
+            username = token['username']
+        except:
+            return jsonify({"error": "Invalid token"}), 401
+
+        # Get existing history
+        user_history = conversation_histories.get(username, [])
+        
         data = request.json
         original_prompt = data.get("prompt", "")
 
@@ -95,6 +119,24 @@ def process_request():
         # ✅ Final debug print of cleaned response
         print("\n📌 **Final Response (After Cleaning):**\n", llm_final_response)
 
+        # Update history
+        user_history.append({
+            "isUser": True,
+            "text": anonymized_prompt,
+            "timestamp": datetime.now().isoformat(),
+            "details": {"anonymizedPrompt": anonymized_prompt}
+        })
+        user_history.append({
+            "isUser": False,
+            "text": llm_raw_response,
+            "timestamp": datetime.now().isoformat(),
+            "details": {"raw": llm_raw_response}
+        })
+        
+        # Maintain history length
+        conversation_histories[username] = user_history[-MAX_HISTORY_LENGTH:]
+
+
         # 🔹 Step 4: Return response
         return jsonify({
             "response": llm_final_response,
@@ -106,6 +148,23 @@ def process_request():
 
     except Exception as e:
         print("❌ Error:", str(e))
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/history', methods=['POST'])
+def get_history():
+    try:
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({"error": "Unauthorized"}), 401
+
+        token = json.loads(auth_header[7:])
+        if time.time() > token.get('expires', 0):
+            return jsonify({"error": "Token expired"}), 401
+            
+        username = token['username']
+        return jsonify({"history": conversation_histories.get(username, [])})
+        
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
