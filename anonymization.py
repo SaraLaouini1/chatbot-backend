@@ -16,8 +16,7 @@ LEGAL_ENTITY_TYPES = {
 
 
 # Load local legal NLP models
-#LEGAL_NLP = spacy.load("en_legal_ner_trf")
-LEGAL_NLP = spacy.load("https://huggingface.co/opennyaiorg/en_legal_ner_trf/resolve/main/en_legal_ner_trf-any-py3-none-any.whl")
+LEGAL_NLP = spacy.load("en_legal_ner_trf")
 NER_PIPELINE = pipeline(
     "ner",
     model="aimlnerd/bert-finetuned-legalentity-ner-accelerate",
