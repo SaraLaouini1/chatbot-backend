@@ -40,7 +40,7 @@ class LegalAnonymizer:
                 })
         
         # Transformers NER detection
-        transformer_results = NER_PIPEline(text)
+        transformer_results = NER_PIPELINE(text)
         for res in transformer_results:
             if res['score'] > 0.85:
                 entity_type = self._classify_legal_entity(res['word'], res['entity_group'], text)
