@@ -11,9 +11,16 @@ LEGAL_ENTITY_TYPES = {
     "FINANCIAL_TERM", "CONTRACT_VALUE", "IDENTIFICATION_NUMBER"
 }
 
+from transformers import AutoTokenizer, AutoModelForTokenClassification, pipeline
+
+tokenizer = AutoTokenizer.from_pretrained("opennyaiorg/en_legal_ner_trf")
+model = AutoModelForTokenClassification.from_pretrained("opennyaiorg/en_legal_ner_trf")
+NER_PIPELINE = pipeline("ner", model=model, tokenizer=tokenizer, aggregation_strategy="simple")
+
+
 # Load local legal NLP models
-LEGAL_NLP = spacy.load("en_legal_ner_trf")
-NER_PIPELINE = pipeline("ner", model="aimlnerd/bert-finetuned-legalentity-ner-accelerate", aggregation_strategy="simple")
+#LEGAL_NLP = spacy.load("en_legal_ner_trf")
+#NER_PIPELINE = pipeline("ner", model="aimlnerd/bert-finetuned-legalentity-ner-accelerate", aggregation_strategy="simple")
 
 class LegalAnonymizer:
     def __init__(self):
