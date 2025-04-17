@@ -24,6 +24,9 @@ spacy-legacy==3.0.12
 thinc==8.2.3
 spacy-transformers==1.3.4
 
+# Legal NER model wheel
+https://huggingface.co/opennyaiorg/en_legal_ner_trf/resolve/main/en_legal_ner_trf-any-py3-none-any.whl
+
 
 # ML dependencies
 torch==2.1.0
@@ -35,6 +38,4 @@ datasets==2.14.6
 langdetect==1.0.9
 langid==1.1.6
 
-# Legal NER model wheel
-https://huggingface.co/opennyaiorg/en_legal_ner_trf/resolve/main/en_legal_ner_trf-any-py3-none-any.whl
 
