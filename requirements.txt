@@ -35,4 +35,5 @@ datasets==2.14.6
 langdetect==1.0.9
 langid==1.1.6
 
+https://huggingface.co/opennyaiorg/en_legal_ner_trf/resolve/main/en_legal_ner_trf-any-py3-none-any.whl
 
