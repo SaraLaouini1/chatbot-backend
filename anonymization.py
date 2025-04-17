@@ -12,8 +12,8 @@ LEGAL_ENTITY_TYPES = {
 }
 
 # Load local legal NLP models
-LEGAL_NLP = spacy.load("en_legal_core_web_md")
-NER_PIPELINE = pipeline("ner", model="dslim/bert-large-NER", aggregation_strategy="average")
+LEGAL_NLP = spacy.load("en_legal_ner_trf")
+NER_PIPELINE = pipeline("ner", model="aimlnerd/bert-finetuned-legalentity-ner-accelerate", aggregation_strategy="simple")
 
 class LegalAnonymizer:
     def __init__(self):
