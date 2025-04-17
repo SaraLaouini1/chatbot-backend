@@ -34,3 +34,6 @@ datasets==2.14.6
 # Additional utilities
 langdetect==1.0.9
 langid==1.1.6
+
+
+opennyaiorg-en-legal-ner-trf
