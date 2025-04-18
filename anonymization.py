@@ -1,82 +1,102 @@
-import re
-from presidio_analyzer import AnalyzerEngine, RecognizerResult
-from presidio_analyzer.nlp_engine import NlpEngineProvider
-from transformers import pipeline
+from presidio_analyzer import AnalyzerEngine, TransformersRecognizer
+from presidio_analyzer.nlp_engine import SpacyNlpEngine
+from transformers import AutoModelForTokenClassification, AutoTokenizer
 from collections import defaultdict
+import spacy
+import re
 
-# 2 HF pipelines for legal NER
-PIPELINES = [
-    pipeline("ner", model="yong-community/Legal-Entity-Recognizer", aggregation_strategy="simple"),
-    pipeline("ner", model="dslim/bert-base-NER-legal-contracts", aggregation_strategy="simple")
-]
+class LegalNlpEngine(SpacyNlpEngine):
+    """English legal document processing engine"""
+    def __init__(self):
+        # Load or download legal model
+        try:
+            super().__init__(models={"en": "en_legal_core_ml_md"})
+        except OSError:
+            print("Downloading legal model...")
+            from spacy.cli import download
+            download("en_legal_core_ml_md")
+            super().__init__(models={"en": "en_legal_core_ml_md"})
 
-# Only these labels matter
-LEGAL_LABELS = {
-    'PARTY', 'CLAUSE', 'TERM', 'LAW', 'COURT',
-    'CONTRACT', 'JUDGE', 'CASE_NUMBER', 'CLIENT_ID'
-}
+# Initialize analyzer with legal configuration
+analyzer = AnalyzerEngine(
+    nlp_engine=LegalNlpEngine(),
+    supported_languages=["en"]
+)
 
-class LegalRecognizer:
-    def analyze(self, text: str, entities=None, **kwargs):
-        # Collect and dedupe HF spans
-        spans = {}
-        for pipe in PIPELINES:
-            for ent in pipe(text):
-                label = ent['entity_group'].upper()
-                if label not in LEGAL_LABELS:
-                    continue
-                key = (ent['start'], ent['end'])
-                if key not in spans or ent['score'] > spans[key]['score']:
-                    spans[key] = {'label': label, **ent}
-        # Build RecognizerResult list
-        return [
-            RecognizerResult(
-                entity_type=span['label'],
-                start=span['start'],
-                end=span['end'],
-                score=span['score']
-            ) for span in spans.values()
-        ]
+def enhance_legal_recognizers():
+    """Add legal-specific entity recognizers"""
+    # Legal BERT model for contract analysis
+    legal_bert_recognizer = TransformersRecognizer(
+        model_path="nlpaueb/legal-bert-small-uncased",
+        aggregation_strategy="max",
+        supported_entities=["PARTY", "CLAUSE_REF", "CONTRACT_TERM"]
+    )
+    
+    # Configure confidence thresholds
+    legal_bert_recognizer.load_transformer(**{
+        "model_to_confidence": {
+            "PARTY": 0.95,
+            "CLAUSE_REF": 0.92,
+            "CONTRACT_TERM": 0.88
+        }
+    })
+    
+    analyzer.registry.add_recognizer(legal_bert_recognizer)
 
-# Remove overlaps
-def filter_overlaps(ents):
-    ordered = sorted(ents, key=lambda x: (x.start, -x.end))
-    out, last_end = [], -1
-    for e in ordered:
-        if e.start >= last_end:
-            out.append(e)
-            last_end = e.end
-        elif e.score > out[-1].score:
-            out[-1] = e
-            last_end = e.end
-    return out
+def legal_context_validation(text, entity):
+    """Validate entities using legal document context"""
+    context_rules = {
+        "PARTY": ["party", "hereinafter", "between", "witnesseth"],
+        "CLAUSE_REF": ["section", "clause", "article", "subsection"],
+        "CONTRACT_TERM": ["term", "effective date", "expiration", "renewal"]
+    }
+    
+    context_window = text[max(0, entity.start-150):entity.end+150].lower()
+    return any(keyword in context_window 
+              for keyword in context_rules.get(entity.entity_type, []))
 
-# Main anonymization
-def anonymize_text(text: str):
-    provider = NlpEngineProvider(nlp_engine=LegalRecognizer())
-    analyzer = AnalyzerEngine(nlp_engine=provider.create_engine())
-    # Clear default recognizers
-    for r in list(analyzer.registry.recognizers):
-        analyzer.registry.remove_recognizer(r)
-    analyzer.registry.add_recognizer(LegalRecognizer())
-
-    # Detect
-    results = analyzer.analyze(text=text, language="en", score_threshold=0.85)
-    filtered = filter_overlaps(results)
-    filtered = sorted(filtered, key=lambda x: x.start, reverse=True)
-
-    mapping, counts = {}, defaultdict(int)
+def anonymize_text(text):
+    """Main anonymization function for legal documents"""
+    enhance_legal_recognizers()
+    
+    # Analyze with higher threshold for legal precision
+    entities = analyzer.analyze(
+        text=text,
+        language="en",
+        score_threshold=0.85,
+        return_decision_process=True
+    )
+    
+    # Contextual validation
+    validated_entities = [ent for ent in entities 
+                        if legal_context_validation(text, ent)]
+    
+    # Anonymization logic
+    entity_counter = defaultdict(int)
+    replacements = {}
     anonymized = text
-    details = []
-
-    for e in filtered:
-        orig = text[e.start:e.end]
-        key = (orig, e.entity_type)
-        if key not in mapping:
-            counts[e.entity_type] += 1
-            tag = f"<{e.entity_type}_{counts[e.entity_type]}>"
-            mapping[key] = tag
-            details.append({"type": e.entity_type, "original": orig, "anonymized": tag})
-        anonymized = anonymized[:e.start] + mapping[key] + anonymized[e.end:]
-
-    return anonymized, details
+    
+    for ent in sorted(validated_entities, key=lambda x: x.start, reverse=True):
+        ent_type = ent.entity_type
+        original = text[ent.start:ent.end]
+        
+        if (original, ent_type) not in replacements:
+            entity_counter[ent_type] += 1
+            replacements[(original, ent_type)] = f"<{ent_type}_{entity_counter[ent_type]}>"
+        
+        anonymized = (
+            anonymized[:ent.start] + 
+            replacements[(original, ent_type)] + 
+            anonymized[ent.end:]
+        )
+    
+    # Prepare mapping documentation
+    mapping = [
+        {
+            "type": ent_type,
+            "original": original,
+            "anonymized": replacement
+        } for (original, ent_type), replacement in replacements.items()
+    ]
+    
+    return anonymized, mapping
