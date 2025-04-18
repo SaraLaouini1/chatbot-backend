@@ -15,19 +15,19 @@ flask-jwt-extended==4.5.3
 bcrypt==4.1.2
 
 # NLP & Anonymization
-spacy==3.2.6  # Downgraded to match legal model requirements
+spacy==3.2.6
 spacy-legacy==3.0.12
-thinc==8.0.17  # Compatible with spaCy 3.2.x
-spacy-transformers==1.1.8  # Compatible version with older spaCy
+thinc==8.0.17
+spacy-transformers==1.0.0  # Further downgraded to match spaCy 3.2.6
 
 # Legal NER model wheel
 en_legal_ner_trf @ https://huggingface.co/opennyaiorg/en_legal_ner_trf/resolve/main/en_legal_ner_trf-any-py3-none-any.whl
 
 # ML dependencies
-torch==2.0.1  # Slightly older version for compatibility
-transformers==4.28.1  # Version compatible with spaCy-transformers 1.1.8
+torch==1.13.1  # Compatible with older transformers
+transformers==4.25.1  # Version matching spacy-transformers 1.0.0
 sentencepiece==0.1.99
-datasets==2.12.0  # Compatible version
+datasets==2.10.1  # Compatible version
 
 # Additional utilities
 langdetect==1.0.9
