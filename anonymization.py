@@ -6,7 +6,7 @@ from collections import defaultdict
 
 # 2 HF pipelines for legal NER
 PIPELINES = [
-    pipeline("ner", model="joelito/legal-ner", aggregation_strategy="simple"),
+    pipeline("ner", model="yong-community/Legal-Entity-Recognizer", aggregation_strategy="simple"),
     pipeline("ner", model="dslim/bert-base-NER-legal-contracts", aggregation_strategy="simple")
 ]
 
