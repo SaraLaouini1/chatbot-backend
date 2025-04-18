@@ -3,6 +3,11 @@ gunicorn==21.2.0
 presidio-analyzer==2.2.34
 presidio-anonymizer==2.2.34
 transformers==4.39.3
-torch==2.2.1
 python-dotenv==1.0.1
 openai==1.75.0
+
+# Replace the direct URL with these lines
+spacy==3.7.4
+spacy-legacy==3.0.12
+spacy-transformers==1.2.5
+en-legal-core-ml-md @ https://github.com/explosion/spacy-models/releases/download/en_legal_core_ml_md-3.7.0/en_legal_core_ml_md-3.7.0-py3-none-any.whl
