@@ -24,10 +24,10 @@ spacy-transformers==1.0.0
 en_legal_ner_trf @ https://huggingface.co/opennyaiorg/en_legal_ner_trf/resolve/main/en_legal_ner_trf-any-py3-none-any.whl
 
 # ML dependencies
-torch==1.13.1
-transformers==4.2.2
+torch==1.13.0  # Oldest available for Python 3.11
+transformers==4.25.1  # Compatible with both spacy-transformers and torch 1.13
 sentencepiece==0.1.96
-datasets==1.18.4
+datasets==2.10.1  # Version compatible with transformers 4.25.1
 
 # Additional utilities
 langdetect==1.0.9
