@@ -14,9 +14,6 @@ import time
 from collections import defaultdict
 from datetime import datetime
 
-from anonymization import LegalAnonymizer
-
-legal_anonymizer = LegalAnonymizer()
 
 load_dotenv()
 
@@ -60,7 +57,6 @@ def process_request():
 
         # 🔹 Step 1: Anonymization
         #anonymized_prompt, mapping = anonymize_text(original_prompt)
-        anonymized_prompt, mapping = legal_anonymizer.anonymize(original_prompt)
 
 
         # Validate placeholders in the anonymized prompt
