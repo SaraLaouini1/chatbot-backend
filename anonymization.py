@@ -6,16 +6,16 @@ import spacy
 import re
 
 class LegalNlpEngine(SpacyNlpEngine):
-    """English legal document processing engine"""
+    """Legal document processing engine with fallback"""
     def __init__(self):
-        # Load or download legal model
         try:
-            super().__init__(models={"en": "en_legal_core_ml_md"})
+            # Try loading large English model
+            super().__init__(models={"en": "en_core_web_lg"})
         except OSError:
-            print("Downloading legal model...")
+            print("Downloading base English model...")
             from spacy.cli import download
-            download("en_legal_core_ml_md")
-            super().__init__(models={"en": "en_legal_core_ml_md"})
+            download("en_core_web_lg")
+            super().__init__(models={"en": "en_core_web_lg"})
 
 # Initialize analyzer with legal configuration
 analyzer = AnalyzerEngine(
@@ -24,69 +24,87 @@ analyzer = AnalyzerEngine(
 )
 
 def enhance_legal_recognizers():
-    """Add legal-specific entity recognizers"""
-    # Legal BERT model for contract analysis
-    legal_bert_recognizer = TransformersRecognizer(
-        model_path="nlpaueb/legal-bert-small-uncased",
+    """Add legal-specific entity recognizers using Legal-BERT"""
+    legal_bert = TransformersRecognizer(
+        model_path="nlpaueb/legal-bert-base-uncased",
         aggregation_strategy="max",
-        supported_entities=["PARTY", "CLAUSE_REF", "CONTRACT_TERM"]
+        supported_entities=["PARTY", "CLAUSE_REF", "CONTRACT_TERM", "CASE_NUMBER"],
+        context=["agreement", "section", "subsection", "witnesseth"]
     )
     
     # Configure confidence thresholds
-    legal_bert_recognizer.load_transformer(**{
+    legal_bert.load_transformer(**{
         "model_to_confidence": {
-            "PARTY": 0.95,
-            "CLAUSE_REF": 0.92,
-            "CONTRACT_TERM": 0.88
+            "PARTY": 0.92,
+            "CLAUSE_REF": 0.88,
+            "CONTRACT_TERM": 0.85,
+            "CASE_NUMBER": 0.95
         }
     })
     
-    analyzer.registry.add_recognizer(legal_bert_recognizer)
+    analyzer.registry.add_recognizer(legal_bert)
 
 def legal_context_validation(text, entity):
-    """Validate entities using legal document context"""
+    """Validate entities using legal document context patterns"""
     context_rules = {
-        "PARTY": ["party", "hereinafter", "between", "witnesseth"],
-        "CLAUSE_REF": ["section", "clause", "article", "subsection"],
-        "CONTRACT_TERM": ["term", "effective date", "expiration", "renewal"]
+        "PARTY": [
+            r"\bparty\b", r"\bbetween\b", r"\bsignatory\b", 
+            r"\bhereinafter\b", r"\bwitnesseth\b"
+        ],
+        "CLAUSE_REF": [
+            r"\bsection\b", r"\bclause\b", r"\barticle\b", 
+            r"\bsubsection\b", r"\bparagraph\b"
+        ],
+        "CONTRACT_TERM": [
+            r"\bterm\b", r"\beffective date\b", 
+            r"\bexpiration\b", r"\brenewal\b"
+        ],
+        "CASE_NUMBER": [
+            r"\bcase no\.?\b", r"\bdocket number\b", 
+            r"\bfile ref\.?\b", r"\bindex no\.?\b"
+        ]
     }
     
-    context_window = text[max(0, entity.start-150):entity.end+150].lower()
-    return any(keyword in context_window 
-              for keyword in context_rules.get(entity.entity_type, []))
+    context_window = text[max(0, entity.start-100):entity.end+100].lower()
+    patterns = context_rules.get(entity.entity_type, [])
+    
+    return any(re.search(pattern, context_window) for pattern in patterns)
 
 def anonymize_text(text):
     """Main anonymization function for legal documents"""
     enhance_legal_recognizers()
     
-    # Analyze with higher threshold for legal precision
+    # Analyze text with combined models
     entities = analyzer.analyze(
         text=text,
         language="en",
-        score_threshold=0.85,
+        score_threshold=0.8,
         return_decision_process=True
     )
     
-    # Contextual validation
-    validated_entities = [ent for ent in entities 
-                        if legal_context_validation(text, ent)]
+    # Validate entities in legal context
+    validated_entities = [
+        ent for ent in entities
+        if legal_context_validation(text, ent)
+    ]
     
-    # Anonymization logic
-    entity_counter = defaultdict(int)
+    # Anonymization processing
     replacements = {}
+    entity_counter = defaultdict(int)
     anonymized = text
     
+    # Process entities in reverse order to maintain positions
     for ent in sorted(validated_entities, key=lambda x: x.start, reverse=True):
-        ent_type = ent.entity_type
         original = text[ent.start:ent.end]
+        ent_type = ent.entity_type
         
-        if (original, ent_type) not in replacements:
+        if original not in replacements:
             entity_counter[ent_type] += 1
-            replacements[(original, ent_type)] = f"<{ent_type}_{entity_counter[ent_type]}>"
+            replacements[original] = f"<{ent_type}_{entity_counter[ent_type]}>"
         
         anonymized = (
             anonymized[:ent.start] + 
-            replacements[(original, ent_type)] + 
+            replacements[original] + 
             anonymized[ent.end:]
         )
     
@@ -96,7 +114,8 @@ def anonymize_text(text):
             "type": ent_type,
             "original": original,
             "anonymized": replacement
-        } for (original, ent_type), replacement in replacements.items()
+        } 
+        for original, replacement in replacements.items()
     ]
     
     return anonymized, mapping
