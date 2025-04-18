@@ -6,16 +6,19 @@ import spacy
 import torch
 from transformers import pipeline
 
-# Load legal NLP models
-LEGAL_NER_MODEL = "joelito/legal-ner"
-CONTRACT_NER_MODEL = "dslim/bert-base-NER-legal-contracts"
 
 class LegalNlpEngine:
     def __init__(self):
-        self.spacy_model = spacy.load("en_legal_ner_trf")
+        try:
+            self.spacy_model = spacy.load("en_legal_ner_trf")
+        except OSError:
+            from spacy.cli import download
+            download("en_legal_ner_trf")
+            self.spacy_model = spacy.load("en_legal_ner_trf")
+        
         self.hf_model = pipeline(
             "ner", 
-            model=CONTRACT_NER_MODEL,
+            model="dslim/bert-base-NER-legal-contracts",
             aggregation_strategy="max"
         )
         self.legal_entities = {
