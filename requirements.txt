@@ -14,7 +14,7 @@ psycopg2-binary==2.9.9
 flask-jwt-extended==4.5.3
 bcrypt==4.1.2
 
-# NLP & Anonymization (must be spaCy <3.3 for legal NER)
+# NLP & Anonymization
 spacy==3.2.6
 spacy-legacy==3.0.12
 thinc==8.0.17
@@ -24,10 +24,10 @@ spacy-transformers==1.0.0
 en_legal_ner_trf @ https://huggingface.co/opennyaiorg/en_legal_ner_trf/resolve/main/en_legal_ner_trf-any-py3-none-any.whl
 
 # ML dependencies
-torch==1.13.1
-transformers==4.2.2
-sentencepiece==0.1.99
-datasets==2.10.1
+torch==1.9.0  # Compatible with transformers 4.2.2
+transformers==4.2.2  # Now matches spacy-transformers 1.0.0's requirement (<4.3.0)
+sentencepiece==0.1.96  # Compatible version
+datasets==1.18.4  # Version compatible with transformers 4.2.2
 
 # Additional utilities
 langdetect==1.0.9
