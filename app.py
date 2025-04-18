@@ -56,7 +56,7 @@ def process_request():
         original_prompt = data.get("prompt", "")
 
         # 🔹 Step 1: Anonymization
-        #anonymized_prompt, mapping = anonymize_text(original_prompt)
+        anonymized_prompt, mapping = anonymize_text(original_prompt)
 
 
         # Validate placeholders in the anonymized prompt
