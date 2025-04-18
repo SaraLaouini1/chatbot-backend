@@ -10,13 +10,28 @@ class LegalNlpEngine(SpacyNlpEngine):
     """Legal document processing engine with fallback"""
     def __init__(self):
         try:
-            # Try loading large English model
-            super().__init__(models={"en": "en_core_web_lg"})
+            # Load with proper model configuration
+            super().__init__(
+                models=[{
+                    "lang_code": "en",
+                    "model_name": "en_core_web_lg"
+                }]
+            )
         except OSError:
             print("Downloading base English model...")
             from spacy.cli import download
             download("en_core_web_lg")
-            super().__init__(models={"en": "en_core_web_lg"})
+            super().__init__(
+                models=[{
+                    "lang_code": "en",
+                    "model_name": "en_core_web_lg"
+                }]
+            )
+
+        # Verify model loading
+        if not self.nlp:
+            raise ValueError("Failed to load spaCy model")
+        print(f"Loaded spaCy model: {self.nlp.meta['name']}")
 
 # Initialize analyzer with legal configuration
 analyzer = AnalyzerEngine(
