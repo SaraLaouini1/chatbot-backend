@@ -10,3 +10,4 @@ huggingface-hub==0.21.4
 python-dotenv==1.0.1
 sentence-transformers==2.5.1
 scikit-learn==1.4.1.post1
+openai
