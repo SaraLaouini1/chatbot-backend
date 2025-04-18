@@ -1,5 +1,5 @@
 from presidio_analyzer import AnalyzerEngine
-from presidio_analyzer.transformers_recognizer import TransformersRecognizer
+from presidio_analyzer.predefined_recognizers import TransformersRecognizer  
 from presidio_analyzer.nlp_engine import SpacyNlpEngine
 from transformers import AutoModelForTokenClassification, AutoTokenizer
 from collections import defaultdict
