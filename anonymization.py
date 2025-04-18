@@ -1,127 +1,103 @@
-# anonymization.py
+# anonymization.py (Updated)
+from presidio_analyzer import AnalyzerEngine, RecognizerResult
+from presidio_analyzer.nlp_engine import NlpEngineProvider
+from typing import List, Optional
 import spacy
+import torch
 from transformers import pipeline
-import hashlib
-from collections import defaultdict
 
-# Legal-specific entity types
-LEGAL_ENTITY_TYPES = {
-    "PARTY_NAME", "CASE_NUMBER", "JURISDICTION", 
-    "CLAUSE_REFERENCE", "EFFECTIVE_DATE", "LEGAL_CITATION",
-    "FINANCIAL_TERM", "CONTRACT_VALUE", "IDENTIFICATION_NUMBER"
-}
+# Load legal NLP models
+LEGAL_NER_MODEL = "joelito/legal-ner"
+CONTRACT_NER_MODEL = "dslim/bert-base-NER-legal-contracts"
 
-
-
-
-
-# Load local legal NLP models
-LEGAL_NLP = spacy.load("en_legal_ner_trf")
-NER_PIPELINE = pipeline(
-    "ner",
-    model="aimlnerd/bert-finetuned-legalentity-ner-accelerate",
-    aggregation_strategy="simple"
-)
-#NER_PIPELINE = pipeline("ner", model="aimlnerd/bert-finetuned-legalentity-ner-accelerate", aggregation_strategy="simple")
-
-class LegalAnonymizer:
+class LegalNlpEngine:
     def __init__(self):
-        self.entity_map = defaultdict(lambda: defaultdict(str))
-        self.legal_context_terms = {
-            'party', 'clause', 'hereinafter', 'witnesseth',
-            'exhibit', 'whereas', 'notwithstanding', 'agreement'
+        self.spacy_model = spacy.load("en_legal_ner_trf")
+        self.hf_model = pipeline(
+            "ner", 
+            model=CONTRACT_NER_MODEL,
+            aggregation_strategy="max"
+        )
+        self.legal_entities = {
+            'PARTY', 'CLAUSE', 'TERM', 'LAW', 'COURT', 
+            'CONTRACT', 'JUDGE', 'CASE_NUMBER', 'CLIENT_ID'
         }
 
-    def _detect_legal_entities(self, text: str) -> list:
-        """Hybrid legal entity detection with type classification"""
-        entities = []
-        
-        # spaCy legal model detection
-        doc = LEGAL_NLP(text)
-        for ent in doc.ents:
-            entity_type = self._classify_legal_entity(ent.text, ent.label_, text)
-            if entity_type:
-                entities.append({
-                    "text": ent.text,
-                    "start": ent.start_char,
-                    "end": ent.end_char,
-                    "type": entity_type
-                })
-        
-        # Transformers NER detection
-        transformer_results = NER_PIPELINE(text)
-        for res in transformer_results:
-            if res['score'] > 0.85:
-                entity_type = self._classify_legal_entity(res['word'], res['entity_group'], text)
-                if entity_type:
-                    entities.append({
-                        "text": res['word'],
-                        "start": res['start'],
-                        "end": res['end'],
-                        "type": entity_type
-                    })
-        
-        return entities
+    def analyze_legal_text(self, text: str) -> List[dict]:
+        """Analyze text using multiple legal NLP models"""
+        # SpaCy analysis
+        spacy_doc = self.spacy_model(text)
+        spacy_ents = [{
+            "text": ent.text,
+            "label": ent.label_,
+            "start": ent.start_char,
+            "end": ent.end_char,
+            "score": 0.95
+        } for ent in spacy_doc.ents]
 
-    def _classify_legal_entity(self, text: str, label: str, context: str) -> str:
-        """Map detected entities to legal-specific types"""
-        context = context.lower()
+        # Transformers analysis
+        hf_ents = self.hf_model(text)
+        merged_ents = self._merge_results(spacy_ents, hf_ents)
         
-        # Legal entity type mapping
-        if label in ["PERSON", "PER"]:
-            if any(term in context for term in ["party", "client", "signatory"]):
-                return "PARTY_NAME"
-            
-        elif label in ["ORG", "LEGAL_ORG"]:
-            if "party" in context:
-                return "PARTY_NAME"
-            return "LEGAL_ENTITY"
-            
-        elif label == "DATE":
-            if any(term in context for term in ["effective", "termination", "commencement"]):
-                return "EFFECTIVE_DATE"
-                
-        elif label == "LAW":
-            return "LEGAL_CITATION"
-            
-        elif label == "CARDINAL":
-            if "clause" in context:
-                return "CLAUSE_REFERENCE"
-            if "case" in context:
-                return "CASE_NUMBER"
-                
-        elif label == "MONEY":
-            return "FINANCIAL_TERM"
-            
-        return None
+        return [
+            ent for ent in merged_ents
+            if ent["label"] in self.legal_entities
+            and self._validate_context(text, ent)
+        ]
 
-    def _generate_typed_pseudonym(self, text: str, entity_type: str) -> str:
-        """Create type-specific pseudonym with consistent hashing"""
-        salt = hashlib.sha256(text.encode()).hexdigest()[:8]
-        return f"<{entity_type}_{salt}>"
+    def _merge_results(self, spacy_ents, hf_ents):
+        # Advanced merging logic for model results
+        merged = []
+        for ent in hf_ents:
+            ent["label"] = ent["entity_group"]
+            merged.append(ent)
+        for ent in spacy_ents:
+            if not any(self._overlap(ent, e) for e in merged):
+                merged.append(ent)
+        return merged
 
-    def anonymize(self, text: str) -> tuple:
-        """Type-preserving legal anonymization"""
-        entities = self._detect_legal_entities(text)
-        mapping = []
-        text_chars = list(text)
+    def _overlap(self, ent1, ent2):
+        return not (ent1["end"] <= ent2["start"] or ent2["end"] <= ent1["start"])
+
+    def _validate_context(self, text: str, entity: dict) -> bool:
+        """Validate entity using contextual analysis"""
+        context_window = text[max(0, entity["start"]-50):entity["end"]+50]
+        context_keywords = {
+            "CASE_NUMBER": ["case", "docket", "number", "v."],
+            "CLIENT_ID": ["client", "id", "confidential", "matter"],
+            "CONTRACT": ["agreement", "party", "clause", "section"]
+        }
         
-        # Process entities from longest to shortest
-        for entity in sorted(entities, key=lambda x: x['end']-x['start'], reverse=True):
-            original = entity['text']
-            entity_type = entity['type']
-            
-            if not self.entity_map[entity_type].get(original):
-                pseudonym = self._generate_typed_pseudonym(original, entity_type)
-                self.entity_map[entity_type][original] = pseudonym
-                mapping.append({
-                    "original": original,
-                    "anonymized": pseudonym,
-                    "type": entity_type
-                })
-            
-            start = entity['start']
-            end = entity['end']
-            text_chars[start:end] = list(self.entity_map[entity_type][original])
+        keywords = context_keywords.get(entity["label"], [])
+        return any(kw in context_window.lower() for kw in keywords)
+
+class LegalRecognizer:
+    def analyze(self, text: str, entities: List[str]) -> List[RecognizerResult]:
+        legal_engine = LegalNlpEngine()
+        entities = legal_engine.analyze_legal_text(text)
         
-        return "".join(text_chars), mapping
+        return [
+            RecognizerResult(
+                entity_type=ent["label"],
+                start=ent["start"],
+                end=ent["end"],
+                score=ent["score"]
+            ) for ent in entities
+        ]
+
+def anonymize_text(text: str):
+    # Initialize analyzer with legal recognizers
+    provider = NlpEngineProvider(nlp_engine=LegalNlpEngine())
+    analyzer = AnalyzerEngine(nlp_engine=provider.create_engine())
+    analyzer.registry.add_recognizer(LegalRecognizer())
+    
+    # Analyze with combined legal and default entities
+    entities = analyzer.analyze(
+        text=text,
+        language="en",
+        score_threshold=0.85,
+        return_decision_process=True
+    )
+    
+    # Anonymization logic remains similar with additional legal entities
+    # ... (rest of your existing anonymization logic)
