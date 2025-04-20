@@ -6,32 +6,30 @@ from collections import defaultdict
 import spacy
 import re
 
+
 class LegalNlpEngine(SpacyNlpEngine):
     """Legal document processing engine with fallback"""
     def __init__(self):
+        self.model_name = "en_core_web_lg"
         try:
-            # Load with proper model configuration
-            super().__init__(
-                models=[{
-                    "lang_code": "en",
-                    "model_name": "en_core_web_lg"
-                }]
-            )
+            # Try loading directly first
+            self.nlp = spacy.load(self.model_name)
         except OSError:
-            print("Downloading base English model...")
+            print(f"Downloading spaCy model: {self.model_name}")
             from spacy.cli import download
-            download("en_core_web_lg")
-            super().__init__(
-                models=[{
-                    "lang_code": "en",
-                    "model_name": "en_core_web_lg"
-                }]
-            )
+            download(self.model_name)
+            self.nlp = spacy.load(self.model_name)
+            
+        # Initialize SpacyNlpEngine with loaded model
+        super().__init__(
+            models=[{
+                "lang_code": "en",
+                "model_name": self.model_name,
+                "model_instance": self.nlp
+            }]
+        )
+        print(f"Successfully loaded: {self.nlp.meta['name']}")
 
-        # Verify model loading
-        if not self.nlp:
-            raise ValueError("Failed to load spaCy model")
-        print(f"Loaded spaCy model: {self.nlp.meta['name']}")
 
 # Initialize analyzer with legal configuration
 analyzer = AnalyzerEngine(
