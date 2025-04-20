@@ -1,38 +1,45 @@
 # anonymization.py
 
 from presidio_analyzer import AnalyzerEngine
-# ✅ Correct import for the HF‐based recognizer:
-from presidio_analyzer.recognizers.transformers_recognizer import TransformersRecognizer
+# 👉 correct import path for version 2.2.x
+from presidio_analyzer.predefined_recognizers.transformers_recognizer import TransformersRecognizer
 
 from collections import defaultdict
 import re
 
-# 1️⃣ Initialize Presidio with its default spaCy engine.
+# 1️⃣ Initialize Presidio with its default spaCy engine
 analyzer = AnalyzerEngine()
 
 def enhance_legal_recognizers():
     """
-    Register a single TransformersRecognizer on top of the spaCy engine.
-    Legal‑BERT will pick up parties, clause refs, contract dates/terms, and case numbers.
+    Add a single TransformersRecognizer (Legal‑BERT) to the registry.
     """
-    legal_bert = TransformersRecognizer(
+    recognizer = TransformersRecognizer(
         model_path="nlpaueb/legal-bert-base-uncased",
-        tokenizer_path="nlpaueb/legal-bert-base-uncased",
-        aggregation_strategy="max",
+        # only these two args are valid in __init__:
         supported_entities=[
             "PARTY",        # e.g. “Acme Corp”
-            "CLAUSE_REF",   # e.g. “Section 5.1”
-            "CONTRACT_TERM",# e.g. “January 1, 2025”
+            "CLAUSE_REF",   # e.g. “Section 5.1”
+            "CONTRACT_TERM",# e.g. “January 1, 2025”
             "CASE_NUMBER"   # e.g. “2023‑ABC‑123”
         ],
-        context=["agreement", "section", "subsection", "witnesseth"],
-        threshold=0.85
     )
-    analyzer.registry.add_recognizer(legal_bert)
+    # configure the HF pipeline (you can also add MODEL_TO_PRESIDIO_MAPPING here if needed)
+    recognizer.load_transformer(**{
+        "SUB_WORD_AGGREGATION": "simple",        # how to merge subword tokens
+        "CHUNK_SIZE": 600,                       # max chars per inference chunk
+        "CHUNK_OVERLAP_SIZE": 40,                # overlap between chunks
+        "LABELS_TO_IGNORE": ["O"],               # ignore the 'O' label
+        # optional: you can set:
+        # "DATASET_TO_PRESIDIO_MAPPING": {...},
+        # "MODEL_TO_PRESIDIO_MAPPING": {...},
+        # "ID_ENTITY_NAME": "CASE_NUMBER", etc.
+    })
+    analyzer.registry.add_recognizer(recognizer)
 
 def legal_context_validation(text: str, ent) -> bool:
     """
-    Quick regex‑based guard: only keep spans that appear with legal keywords nearby.
+    Only keep spans if they occur near legal keywords.
     """
     rules = {
         "PARTY":        [r"\bparty\b", r"\bbetween\b", r"\bherein\b"],
@@ -45,16 +52,15 @@ def legal_context_validation(text: str, ent) -> bool:
 
 def anonymize_text(text: str):
     """
-    1. Ensure the Legal‑BERT recognizer is loaded
-    2. Run the analysis
-    3. (Optional) Filter by legal context
-    4. Replace each span with <TYPE_n> in reverse order
-    5. Return anonymized text + mapping list
+    1. Register legal recognizer
+    2. Run analysis
+    3. (Optional) Filter by context
+    4. Replace spans back→front
+    5. Return (anonymized_text, mapping)
     """
-    # register our HF recognizer
     enhance_legal_recognizers()
 
-    # ▶️ 2. Detect
+    # ▶️ 2. Detect all four entity types
     entities = analyzer.analyze(
         text=text,
         entities=["PARTY", "CLAUSE_REF", "CONTRACT_TERM", "CASE_NUMBER"],
@@ -62,24 +68,24 @@ def anonymize_text(text: str):
         score_threshold=0.8,
     )
 
-    # ▶️ 3. Context filter
+    # ▶️ 3. Filter false positives via simple regex context
     entities = [e for e in entities if legal_context_validation(text, e)]
 
-    # ▶️ 4. Replace spans back→front
+    # ▶️ 4. Anonymize from back→front
     replacements = {}
     counters = defaultdict(int)
     result = text
 
     for e in sorted(entities, key=lambda x: x.start, reverse=True):
         span = result[e.start:e.end]
-        typ = e.entity_type
+        typ  = e.entity_type
         if (span, typ) not in replacements:
             counters[typ] += 1
             replacements[(span, typ)] = f"<{typ}_{counters[typ]}>"
         token = replacements[(span, typ)]
         result = result[:e.start] + token + result[e.end:]
 
-    # ▶️ 5. Prepare mapping
+    # ▶️ 5. Build mapping list
     mapping = [
         {"type": typ, "original": orig, "anonymized": token}
         for (orig, typ), token in replacements.items()
