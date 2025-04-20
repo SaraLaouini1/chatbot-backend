@@ -1,30 +1,22 @@
+# app.py
 
-from flask import Flask, request, jsonify
-from anonymization import anonymize_text
-from llm_client import send_to_llm
-from flask import Flask, request, jsonify
-import json
-
-from flask_cors import CORS
-from dotenv import load_dotenv
 import os
 import re
+import json
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from dotenv import load_dotenv
 
-import time
-from collections import defaultdict
-from datetime import datetime
-
+from anonymization import anonymize_text
+from llm_client import send_to_llm
 
 load_dotenv()
 
 app = Flask(__name__)
 
-
-
-
-# Update CORS configuration at the top of app.py
+# Allow your front‑end origins
 CORS(app, resources={
-    r"/*": {  
+    r"/*": {
         "origins": [
             "https://chatbot-login.onrender.com",
             "http://localhost:5173"
@@ -34,7 +26,6 @@ CORS(app, resources={
         "supports_credentials": True
     }
 })
-
 
 @app.before_request
 def log_request_info():
@@ -52,61 +43,43 @@ def handle_get():
 @app.route('/process', methods=['POST'])
 def process_request():
     try:
-        data = request.json
+        data = request.get_json(force=True)
         original_prompt = data.get("prompt", "")
 
-        # 🔹 Step 1: Anonymization
+        # 🔹 Step 1: Anonymize
         anonymized_prompt, mapping = anonymize_text(original_prompt)
 
-
-        # Validate placeholders in the anonymized prompt
-        #expected_placeholders = {item["anonymized"] for item in mapping}
-        #found_placeholders = set(re.findall(r"<\w+_\d+>", anonymized_prompt))
-        
-        #if expected_placeholders != found_placeholders:
-            #raise ValueError(f"Placeholder mismatch. Expected: {expected_placeholders}, Found: {found_placeholders}")
-
-        # ✅ Better debug prints for the anonymized prompt and mapping
-        print("\n📌 **Anonymized Prompt:**\n", anonymized_prompt)
-        print("\n📌 **Mapping:**\n", json.dumps(mapping, indent=2))
+        print("\n📌 Anonymized Prompt:\n", anonymized_prompt)
+        print("\n📌 Mapping:\n", json.dumps(mapping, indent=2))
 
         # 🔹 Step 2: Send to LLM
-        mapped_placeholders = [item["anonymized"] for item in mapping]
-        llm_raw_response  = send_to_llm(
-            anonymized_prompt,
-            placeholders=mapped_placeholders
-        )
+        placeholders = [m["anonymized"] for m in mapping]
+        llm_raw = send_to_llm(anonymized_prompt, placeholders)
 
-        # ✅ Debug print before recontextualization
-        print("\n📌 **LLM Response Before Cleaning:**\n", llm_raw_response )
+        print("\n📌 LLM Raw Response:\n", llm_raw)
 
-        # 🔹 Step 3: Recontextualization - Replace anonymized placeholders with original values
-        llm_after_recontext = llm_raw_response
-        for item in mapping:
-            placeholder = re.escape(item["anonymized"])
-            llm_after_recontext = re.sub(rf'{placeholder}', item["original"], llm_after_recontext)
+        # 🔹 Step 3: Re‑inject originals
+        llm_recontext = llm_raw
+        for m in mapping:
+            esc = re.escape(m["anonymized"])
+            llm_recontext = re.sub(rf'{esc}', m["original"], llm_recontext)
 
-        # ✅ Final cleanup of unnecessary placeholders
-        llm_final_response  = re.sub(r'<\w+_\d+>', '', llm_after_recontext)
+        # Remove any leftover tokens
+        llm_final = re.sub(r'<\w+_\d+>', '', llm_recontext)
+        print("\n📌 Final Response:\n", llm_final)
 
-        # ✅ Final debug print of cleaned response
-        print("\n📌 **Final Response (After Cleaning):**\n", llm_final_response)
-
-
-
-        # 🔹 Step 4: Return response
         return jsonify({
-            "response": llm_final_response,
-            "llm_raw": llm_raw_response,
-            "llm_after_recontext": llm_after_recontext,
+            "response": llm_final,
+            "llm_raw": llm_raw,
+            "llm_after_recontext": llm_recontext,
             "anonymized_prompt": anonymized_prompt,
             "mapping": mapping
         })
 
     except Exception as e:
-        print("❌ Error:", str(e))
+        app.logger.error("Error in /process: %s", str(e))
         return jsonify({"error": str(e)}), 500
 
-
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)))
+    port = int(os.getenv('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
