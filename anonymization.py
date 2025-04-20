@@ -1,42 +1,56 @@
 # anonymization.py
 
-from presidio_analyzer import AnalyzerEngine
-# ↪️ import TransformersRecognizer from the top‐level predefined_recognizers
-from presidio_analyzer.predefined_recognizers import TransformersRecognizer
-
+from presidio_analyzer import AnalyzerEngine, RecognizerResult, EntityRecognizer
+from transformers import pipeline
 from collections import defaultdict
 import re
 
-# 1️⃣ Initialize Presidio with its default spaCy engine
-analyzer = AnalyzerEngine()
+# 1️⃣ Define a tiny custom NER‑recognizer for Legal‑BERT
+class LegalBertRecognizer(EntityRecognizer):
+    def __init__(self):
+        # only supported_entities goes here!
+        super().__init__(supported_entities=[
+            "PARTY", "CLAUSE_REF", "CONTRACT_TERM", "CASE_NUMBER"
+        ], name="legal-bert-recognizer")
+        # spin up a HF token‑classification pipeline
+        self.ner = pipeline(
+            "token-classification",
+            model="nlpaueb/legal-bert-base-uncased",
+            aggregation_strategy="simple"
+        )
+        # map HF groups → your taxonomy
+        self.label_map = {
+            "PER":           "PARTY",
+            "ORG":           "PARTY",        # tweak as you like
+            "DATE":          "CONTRACT_TERM",
+            "MONEY":         "CONTRACT_TERM",
+            "LOC":           "CLAUSE_REF",   # for “Section 5.1” might appear as LOC
+            # add or adjust mappings for CASE_NUMBER etc...
+        }
 
-def enhance_legal_recognizers():
-    """
-    Register the Legal‑BERT based TransformersRecognizer.
-    """
-    recognizer = TransformersRecognizer(
-        # this __init__ only accepts model_path & supported_entities
-        model_path="nlpaueb/legal-bert-base-uncased",
-        supported_entities=[
-            "PARTY",        # e.g. “Acme Corp”
-            "CLAUSE_REF",   # e.g. “Section 5.1”
-            "CONTRACT_TERM",# e.g. “January 1, 2025”
-            "CASE_NUMBER"   # e.g. “2023‑ABC‑123”
-        ],
-    )
-    # now configure the HF pipeline
-    recognizer.load_transformer(
-        SUB_WORD_AGGREGATION="simple",
-        CHUNK_SIZE=600,
-        CHUNK_OVERLAP_SIZE=40,
-        LABELS_TO_IGNORE=["O"],
-    )
-    analyzer.registry.add_recognizer(recognizer)
+    def analyze(self, text, entities, language, nlp_artifacts=None):
+        results = []
+        for ent in self.ner(text):
+            label = self.label_map.get(ent["entity_group"])
+            if not label or label not in entities:
+                continue
+            start, end, score = ent["start"], ent["end"], ent["score"]
+            results.append(RecognizerResult(
+                entity_type=label,
+                start=start,
+                end=end,
+                score=score
+            ))
+        return results
+
+
+# 2️⃣ Initialize the engine and register your custom recognizer
+analyzer = AnalyzerEngine()
+analyzer.registry.add_recognizer(LegalBertRecognizer())
+
 
 def legal_context_validation(text: str, ent) -> bool:
-    """
-    Keep only those spans that appear near typical legal keywords.
-    """
+    """Optional: keep only those spans near legal keywords."""
     rules = {
         "PARTY":        [r"\bparty\b", r"\bbetween\b", r"\bherein\b"],
         "CLAUSE_REF":   [r"\bsection\b", r"\bclause\b"],
@@ -46,42 +60,40 @@ def legal_context_validation(text: str, ent) -> bool:
     window = text[max(0, ent.start - 50): ent.end + 50].lower()
     return any(re.search(p, window) for p in rules.get(ent.entity_type, []))
 
+
 def anonymize_text(text: str):
     """
-    1. Register the Legal‑BERT recognizer
-    2. Run Presidio analysis
-    3. (Optional) Filter by legal context
-    4. Splice out each span (back→front) with <TYPE_n>
-    5. Return (anonymized_text, mapping)
+    1. Run Presidio analysis (with LegalBertRecognizer active)
+    2. (Optional) Filter by legal_context_validation
+    3. Replace each span back→front with <TYPE_n>
+    4. Return anonymized text + mapping
     """
-    enhance_legal_recognizers()
-
-    # 2️⃣ Detect
+    # ▶️ 1. Detect
     entities = analyzer.analyze(
         text=text,
         entities=["PARTY", "CLAUSE_REF", "CONTRACT_TERM", "CASE_NUMBER"],
         language="en",
-        score_threshold=0.8,
+        score_threshold=0.8
     )
 
-    # 3️⃣ Filter false positives via regex context
+    # ▶️ 2. Context filter (optional)
     entities = [e for e in entities if legal_context_validation(text, e)]
 
-    # 4️⃣ Replace spans back→front
+    # ▶️ 3. Splice out spans back→front
     replacements = {}
     counters = defaultdict(int)
     result = text
 
     for e in sorted(entities, key=lambda x: x.start, reverse=True):
-        span = result[e.start:e.end]
+        orig = result[e.start:e.end]
         typ  = e.entity_type
-        if (span, typ) not in replacements:
+        if (orig, typ) not in replacements:
             counters[typ] += 1
-            replacements[(span, typ)] = f"<{typ}_{counters[typ]}>"
-        token = replacements[(span, typ)]
+            replacements[(orig, typ)] = f"<{typ}_{counters[typ]}>"
+        token = replacements[(orig, typ)]
         result = result[:e.start] + token + result[e.end:]
 
-    # 5️⃣ Build mapping for re‑injection
+    # ▶️ 4. Build mapping list
     mapping = [
         {"type": typ, "original": orig, "anonymized": token}
         for (orig, typ), token in replacements.items()
