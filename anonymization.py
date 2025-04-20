@@ -8,25 +8,25 @@ import re
 # 1️⃣ Define a tiny custom NER‑recognizer for Legal‑BERT
 class LegalBertRecognizer(EntityRecognizer):
     def __init__(self):
-        # only supported_entities goes here!
-        super().__init__(supported_entities=[
-            "PARTY", "CLAUSE_REF", "CONTRACT_TERM", "CASE_NUMBER"
-        ], name="legal-bert-recognizer")
-        # spin up a HF token‑classification pipeline
+        super().__init__(
+            supported_entities=["PARTY", "CLAUSE_REF", "CONTRACT_TERM", "CASE_NUMBER"],
+            name="legal-bert-recognizer",
+            supported_language="en"
+        )
         self.ner = pipeline(
             "token-classification",
             model="nlpaueb/legal-bert-base-uncased",
             aggregation_strategy="simple"
         )
-        # map HF groups → your taxonomy
         self.label_map = {
             "PER":           "PARTY",
-            "ORG":           "PARTY",        # tweak as you like
+            "ORG":           "PARTY",
             "DATE":          "CONTRACT_TERM",
             "MONEY":         "CONTRACT_TERM",
-            "LOC":           "CLAUSE_REF",   # for “Section 5.1” might appear as LOC
-            # add or adjust mappings for CASE_NUMBER etc...
+            "LOC":           "CLAUSE_REF"
+            # Extend here for CASE_NUMBER, if applicable
         }
+
 
     def analyze(self, text, entities, language, nlp_artifacts=None):
         results = []
