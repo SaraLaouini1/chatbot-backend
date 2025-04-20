@@ -1,7 +1,9 @@
 # anonymization.py
 
 from presidio_analyzer import AnalyzerEngine
-from presidio_analyzer.predefined_recognizers import TransformersRecognizer
+# ✅ Correct import for the HF‐based recognizer:
+from presidio_analyzer.recognizers.transformers_recognizer import TransformersRecognizer
+
 from collections import defaultdict
 import re
 
@@ -14,7 +16,6 @@ def enhance_legal_recognizers():
     Legal‑BERT will pick up parties, clause refs, contract dates/terms, and case numbers.
     """
     legal_bert = TransformersRecognizer(
-        # ⬇️ use model_path + tokenizer_path, not model_name/tokenizer_name
         model_path="nlpaueb/legal-bert-base-uncased",
         tokenizer_path="nlpaueb/legal-bert-base-uncased",
         aggregation_strategy="max",
@@ -50,7 +51,7 @@ def anonymize_text(text: str):
     4. Replace each span with <TYPE_n> in reverse order
     5. Return anonymized text + mapping list
     """
-    # register (idempotent)  
+    # register our HF recognizer
     enhance_legal_recognizers()
 
     # ▶️ 2. Detect
