@@ -14,15 +14,17 @@ def enhance_legal_recognizers():
     Legal‑BERT will pick up parties, clause refs, contract dates/terms, and case numbers.
     """
     legal_bert = TransformersRecognizer(
-        model_name="nlpaueb/legal-bert-base-uncased",
-        tokenizer_name="nlpaueb/legal-bert-base-uncased",
+        # ⬇️ use model_path + tokenizer_path, not model_name/tokenizer_name
+        model_path="nlpaueb/legal-bert-base-uncased",
+        tokenizer_path="nlpaueb/legal-bert-base-uncased",
         aggregation_strategy="max",
         supported_entities=[
             "PARTY",        # e.g. “Acme Corp”
-            "CLAUSE_REF",   # e.g. “Section 5.1”
-            "CONTRACT_TERM",# e.g. “January 1, 2025”
+            "CLAUSE_REF",   # e.g. “Section 5.1”
+            "CONTRACT_TERM",# e.g. “January 1, 2025”
             "CASE_NUMBER"   # e.g. “2023‑ABC‑123”
         ],
+        context=["agreement", "section", "subsection", "witnesseth"],
         threshold=0.85
     )
     analyzer.registry.add_recognizer(legal_bert)
@@ -48,6 +50,7 @@ def anonymize_text(text: str):
     4. Replace each span with <TYPE_n> in reverse order
     5. Return anonymized text + mapping list
     """
+    # register (idempotent)  
     enhance_legal_recognizers()
 
     # ▶️ 2. Detect
@@ -58,7 +61,7 @@ def anonymize_text(text: str):
         score_threshold=0.8,
     )
 
-    # ▶️ 3. Context filter (keep only those that live in legal context)
+    # ▶️ 3. Context filter
     entities = [e for e in entities if legal_context_validation(text, e)]
 
     # ▶️ 4. Replace spans back→front
