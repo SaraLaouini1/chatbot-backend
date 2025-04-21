@@ -65,8 +65,8 @@ def anonymize_text(text: str):
     """
     1. Run Presidio analysis (with LegalBertRecognizer active)
     2. (Optional) Filter by legal_context_validation
-    3. Replace each span back→front with <TYPE_n>
-    4. Return anonymized text + mapping
+    3. Replace each span back→front with <TYPE_n>, tracking only *new* mappings
+    4. Return anonymized text + updated_analysis (new mappings)
     """
     # ▶️ 1. Detect
     entities = analyzer.analyze(
@@ -76,27 +76,39 @@ def anonymize_text(text: str):
         score_threshold=0.8
     )
 
-    # ▶️ 2. Context filter (optional)
+    # ▶️ 2. (Optional) Context filter
     entities = [e for e in entities if legal_context_validation(text, e)]
 
-    # ▶️ 3. Splice out spans back→front
-    replacements = {}
-    counters = defaultdict(int)
+    # ▶️ 3. Prepare mapping structures
+    existing_mappings = {}             # key: (orig, type) → anonymized_label
+    entity_counters   = defaultdict(int)
+    updated_analysis  = []             # only new mappings go here
+
+    # work on a mutable copy
     result = text
 
-    for e in sorted(entities, key=lambda x: x.start, reverse=True):
-        orig = result[e.start:e.end]
-        typ  = e.entity_type
-        if (orig, typ) not in replacements:
-            counters[typ] += 1
-            replacements[(orig, typ)] = f"<{typ}_{counters[typ]}>"
-        token = replacements[(orig, typ)]
-        result = result[:e.start] + token + result[e.end:]
+    # ▶️ 4. Splice out spans back→front (reverse offset so indices remain valid)
+    for ent in sorted(entities, key=lambda x: x.start, reverse=True):
+        orig        = result[ent.start:ent.end]
+        key         = (orig, ent.entity_type)
 
-    # ▶️ 4. Build mapping list
-    mapping = [
-        {"type": typ, "original": orig, "anonymized": token}
-        for (orig, typ), token in replacements.items()
-    ]
+        if key not in existing_mappings:
+            # first time we see this exact text+type
+            entity_counters[ent.entity_type] += 1
+            anonymized_label = f"<{ent.entity_type}_{entity_counters[ent.entity_type]}>"
+            existing_mappings[key] = anonymized_label
 
-    return result, mapping
+            # record it in updated_analysis
+            updated_analysis.append({
+                "type":       ent.entity_type,
+                "original":   orig,
+                "anonymized": anonymized_label
+            })
+        else:
+            anonymized_label = existing_mappings[key]
+
+        # do the actual replacement
+        result = result[:ent.start] + anonymized_label + result[ent.end:]
+
+    # ▶️ 5. Return both the final text and only the *new* mappings we created
+    return result, updated_analysis
