@@ -28,7 +28,7 @@ class LegalBertRecognizer(EntityRecognizer):
         }
 
 
-    def analyze(self, text, entities, language, nlp_artifacts=None):
+    def analyze(self, text, entities, *, nlp_artifacts=None, language=None):
         results = []
         for ent in self.ner(text):
             label = self.label_map.get(ent["entity_group"])
