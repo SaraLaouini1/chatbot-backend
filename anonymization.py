@@ -85,11 +85,11 @@ def anonymize_text(text: str):
     updated_analysis  = []             # only new mappings go here
 
     # work on a mutable copy
-    result = text
+    anonymized_text = text
 
     # ▶️ 4. Splice out spans back→front (reverse offset so indices remain valid)
     for ent in sorted(entities, key=lambda x: x.start, reverse=True):
-        orig        = result[ent.start:ent.end]
+        orig        = anonymized_text[ent.start:ent.end]
         key         = (orig, ent.entity_type)
 
         if key not in existing_mappings:
@@ -108,7 +108,7 @@ def anonymize_text(text: str):
             anonymized_label = existing_mappings[key]
 
         # do the actual replacement
-        result = result[:ent.start] + anonymized_label + result[ent.end:]
+        anonymized_text = anonymized_text[:ent.start] + anonymized_label + anonymized_text[ent.end:]
 
     # ▶️ 5. Return both the final text and only the *new* mappings we created
-    return result, updated_analysis
+    return anonymized_text, updated_analysis
