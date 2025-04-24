@@ -162,3 +162,17 @@ def anonymize_text(text: str):
         out = out[:start] + token + out[end:]
 
     return out, mapping
+
+if __name__ == "__main__":
+    """
+    When you run `python anonymization.py` from the shell,
+    this block will download & cache the model and exit.
+    """
+    try:
+        _ensure_local_llm()
+        print("[anonymization] build-time download complete")
+        exit(0)
+    except Exception as e:
+        print(f"[anonymization] build-time error: {e}")
+        exit(1)
+
