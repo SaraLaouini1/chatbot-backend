@@ -67,28 +67,43 @@ def legal_context_validation(text: str, ent) -> bool:
     return any(re.search(p, window) for p in rules.get(ent.entity_type, []))
 
 def anonymize_text(text: str):
-    # 1. Detect *all* built-in PII + your Legal-BERT spans
-    entities = analyzer.analyze(
-        text=text,
-        language="en",
-        score_threshold=0.8
+    # 1. Detect ALL entities (built-in + your LegalBERT)
+    all_entities = analyzer.analyze(
+       text=text,
+       language="en",
+       score_threshold=0.8,
     )
-    # 2. Filter out any non-legal contexts if you still want
-    entities = [e for e in entities if legal_context_validation(text, e)]
-    # 3. Build mappings and redact
-    existing = {}
-    counters = defaultdict(int)
-    updated = []
+
+    # 2. Split into “built-ins” vs your custom legal types
+    LEGAL_TYPES = {"PARTY", "CLAUSE_REF", "CONTRACT_TERM", "CASE_NUMBER"}
+    built_ins     = [e for e in all_entities if e.entity_type not in LEGAL_TYPES]
+    legal_matches = [
+        e for e in all_entities
+        if e.entity_type in LEGAL_TYPES
+        and legal_context_validation(text, e)
+    ]
+
+    # 3. Merge them back
+    entities = built_ins + legal_matches
+
+    # 4. Build your <TYPE_n> mapping & redact, as before
+    existing, counters, updated = {}, defaultdict(int), []
     out = text
     for e in sorted(entities, key=lambda x: x.start, reverse=True):
         orig = out[e.start:e.end]
-        key = (orig, e.entity_type)
+        key  = (orig, e.entity_type)
         if key not in existing:
             counters[e.entity_type] += 1
             tok = f"<{e.entity_type}_{counters[e.entity_type]}>"
             existing[key] = tok
-            updated.append({"type":e.entity_type, "original":orig, "anonymized":tok})
+            updated.append({
+              "type": e.entity_type,
+              "original": orig,
+              "anonymized": tok
+            })
         else:
             tok = existing[key]
         out = out[:e.start] + tok + out[e.end:]
+
     return out, updated
+
