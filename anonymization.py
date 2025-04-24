@@ -1,109 +1,114 @@
 # anonymization.py
 
-from presidio_analyzer import AnalyzerEngine, RecognizerResult, EntityRecognizer
-from collections import defaultdict
+import json
 import re
+from collections import defaultdict
 
-# 1️⃣ Define your custom NER-recognizer for Legal-BERT, but do *not* load the model yet
-class LegalBertRecognizer(EntityRecognizer):
-    def __init__(self):
-        super().__init__(
-            supported_entities=["PARTY", "CLAUSE_REF", "CONTRACT_TERM", "CASE_NUMBER"],
-            name="legal-bert-recognizer",
-            supported_language="en"
-        )
-        self.ner = None   # ← model will be created on first use
+import torch
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
-    def _ensure_model(self):
-        if self.ner is None:
-            from transformers import pipeline
-            try:
-                self.ner = pipeline(
-                    "token-classification",
-                    model="nlpaueb/legal-bert-base-uncased",
-                    aggregation_strategy="simple",
-                    device=-1                # force CPU (no GPU) to avoid OOM on small servers
-                )
-            except Exception as e:
-                # if model load fails, just skip it
-                print(f"[LegalBertRecognizer] failed to load model: {e}")
-                self.ner = []
+# ─── 1. Load your local LLM ─────────────────────────────────────────────────────
 
-    def analyze(self, text, entities, *, nlp_artifacts=None, language=None):
-        # lazy-load
-        self._ensure_model()
-        if not self.ner:
-            return []
+MODEL_NAME = "TheBloke/Llama-2-7B-GGUF"   # or whichever local checkpoint you have
+DEVICE     = "cuda" if torch.cuda.is_available() else "cpu"
 
-        results = []
-        for ent in self.ner(text):
-            label = {
-                "PER": "PARTY", "ORG": "PARTY",
-                "DATE": "CONTRACT_TERM", "MONEY": "CONTRACT_TERM",
-                "LOC": "CLAUSE_REF"
-            }.get(ent["entity_group"])
-            if not label or label not in entities:
-                continue
-            results.append(RecognizerResult(
-                entity_type=label,
-                start=ent["start"],
-                end=ent["end"],
-                score=ent["score"],
-            ))
-        return results
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, use_fast=True)
+model     = AutoModelForCausalLM.from_pretrained(
+    MODEL_NAME,
+    device_map="auto" if DEVICE=="cuda" else None,
+    torch_dtype=torch.float16 if DEVICE=="cuda" else torch.float32,
+).to(DEVICE)
 
-# 2️⃣ Initialize the engine *without* triggering any model-loads
-analyzer = AnalyzerEngine()
-analyzer.registry.add_recognizer(LegalBertRecognizer())
 
-def legal_context_validation(text: str, ent) -> bool:
-    rules = {
-        "PARTY":        [r"\bparty\b", r"\bbetween\b", r"\bherein\b"],
-        "CLAUSE_REF":   [r"\bsection\b", r"\bclause\b"],
-        "CONTRACT_TERM":[r"\bterm\b", r"\beffective date\b"],
-        "CASE_NUMBER":  [r"\bcase no\.?\b", r"\bdocket\b"]
-    }
-    window = text[max(0, ent.start - 50): ent.end + 50].lower()
-    return any(re.search(p, window) for p in rules.get(ent.entity_type, []))
+# ─── 2. A helper that asks the LLM to return ALL spans of sensitive data ────────
 
-def anonymize_text(text: str):
-    # 1. Detect ALL entities (built-in + your LegalBERT)
-    all_entities = analyzer.analyze(
-       text=text,
-       language="en",
-       score_threshold=0.8,
+def detect_sensitive_spans(text: str):
+    """
+    Prompts the local LLM to find every PII or legal reference span in `text`.
+    Returns a list of dicts: [{"type": TYPE, "start": int, "end": int}, …]
+    """
+    instruction = (
+        "You are a data-privacy assistant. Given the user’s text, "
+        "identify every span of **sensitive data**—including:\n"
+        " • Emails\n"
+        " • Phone numbers\n"
+        " • IP addresses\n"
+        " • Credit card numbers\n"
+        " • SSNs or national IDs\n"
+        " • Person names, Orgs, Locations, Dates\n"
+        " • Clause references (e.g. “Clause 5.3”)\n"
+        " • Case numbers (e.g. “Case No. 2021-CR-04567”)\n\n"
+        "Return ONLY a JSON array of objects with keys "
+        "`type` (string), `start` (int), `end` (int).  "
+        "Do NOT return any other text.\n\n"
+        f"Text:\n'''{text}'''"
     )
 
-    # 2. Split into “built-ins” vs your custom legal types
-    LEGAL_TYPES = {"PARTY", "CLAUSE_REF", "CONTRACT_TERM", "CASE_NUMBER"}
-    built_ins     = [e for e in all_entities if e.entity_type not in LEGAL_TYPES]
-    legal_matches = [
-        e for e in all_entities
-        if e.entity_type in LEGAL_TYPES
-        and legal_context_validation(text, e)
-    ]
+    # Tokenize + generate
+    inputs = tokenizer(instruction, return_tensors="pt", truncation=True, max_length=1024)
+    inputs = {k: v.to(DEVICE) for k, v in inputs.items()}
+    outputs = model.generate(
+        **inputs,
+        max_new_tokens=512,
+        do_sample=False,
+        eos_token_id=tokenizer.eos_token_id,
+    )
+    generated = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-    # 3. Merge them back
-    entities = built_ins + legal_matches
+    # Extract the JSON array from the output
+    try:
+        # assumes the model outputs something like: ...[ {...}, {...} ]...
+        json_str = generated[generated.index("["): generated.rindex("]")+1]
+        spans    = json.loads(json_str)
+        # Basic validation
+        clean = []
+        for s in spans:
+            if (
+                isinstance(s.get("type"), str)
+                and isinstance(s.get("start"), int)
+                and isinstance(s.get("end"),   int)
+                and 0 <= s["start"] < s["end"] <= len(text)
+            ):
+                clean.append(s)
+        return clean
+    except Exception:
+        return []
 
-    # 4. Build your <TYPE_n> mapping & redact, as before
-    existing, counters, updated = {}, defaultdict(int), []
+
+# ─── 3. The anonymization function ───────────────────────────────────────────────
+
+def anonymize_text(text: str):
+    """
+    1. Calls detect_sensitive_spans(text) via your local LLM.
+    2. Replaces each span with <TYPE_n> tokens (new counter per type).
+    3. Returns (anonymized_text, mapping_list).
+    """
+    spans = detect_sensitive_spans(text)
+
+    # Sort spans in reverse order so earlier replacements don't shift indices
+    spans = sorted(spans, key=lambda x: x["start"], reverse=True)
+
+    existing, counters, mapping = {}, defaultdict(int), []
     out = text
-    for e in sorted(entities, key=lambda x: x.start, reverse=True):
-        orig = out[e.start:e.end]
-        key  = (orig, e.entity_type)
+
+    for span in spans:
+        typ, start, end = span["type"], span["start"], span["end"]
+        orig = out[start:end]
+        key  = (orig, typ)
+
         if key not in existing:
-            counters[e.entity_type] += 1
-            tok = f"<{e.entity_type}_{counters[e.entity_type]}>"
-            existing[key] = tok
-            updated.append({
-              "type": e.entity_type,
-              "original": orig,
-              "anonymized": tok
+            counters[typ] += 1
+            token = f"<{typ}_{counters[typ]}>"
+            existing[key] = token
+            mapping.append({
+                "type":       typ,
+                "original":   orig,
+                "anonymized": token
             })
         else:
-            tok = existing[key]
-        out = out[:e.start] + tok + out[e.end:]
+            token = existing[key]
 
-    return out, updated
+        # Splice in the placeholder
+        out = out[:start] + token + out[end:]
 
+    return out, mapping
