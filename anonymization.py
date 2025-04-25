@@ -1,178 +1,81 @@
-# anonymization.py
-
-import os
+import requests
 import json
+import re
 from collections import defaultdict
+from presidio_analyzer import RecognizerResult
 
-import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from huggingface_hub import snapshot_download
+# ---- Configuration ----
+OLLAMA_URL = "http://localhost:11434/api/generate"
+OLLAMA_MODEL = "mistral:latest"  # Change as needed
 
-# ─── 1. Configuration ───────────────────────────────────────────────────────────
-
-# HF repo name of your local checkpoint
-MODEL_NAME = "TheBloke/Llama-2-7B-GGUF"
-# Where to store it on disk
-MODEL_DIR  = os.getenv("MODEL_DIR", "./models/Llama-2-7B-GGUF")
-# HF token (set in Render’s env)
-HF_TOKEN   = os.getenv("HF_TOKEN", None)
-
-# Device config
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
-# Lazy holders
-_tokenizer = None
-_model     = None
-
-
-# ─── 2. Lazy-loader + downloader ────────────────────────────────────────────────
-
-def _ensure_local_llm():
-    global _tokenizer, _model
-
-    # already loaded?
-    if _tokenizer and _model:
-        return
-
-    # 2.1 Download if missing
-    if not os.path.isdir(MODEL_DIR) or not os.listdir(MODEL_DIR):
-        if not HF_TOKEN:
-            print("[anonymization] WARN: no HF_TOKEN, can't download model")
-        else:
-            try:
-                print(f"[anonymization] downloading model to {MODEL_DIR} …")
-                snapshot_download(
-                    repo_id=MODEL_NAME,
-                    local_dir=MODEL_DIR,
-                    use_auth_token=HF_TOKEN,
-                    resume_download=True
-                )
-                print("[anonymization] download complete")
-            except Exception as e:
-                print(f"[anonymization] model download failed: {e}")
-
-    # 2.2 Load from disk
+# ---- LLM Call ----
+def call_ollama(prompt: str) -> str:
+    """Send prompt to local Ollama LLM and return the response text."""
+    payload = {
+        "model": OLLAMA_MODEL,
+        "messages": [{"role": "user", "content": prompt}]
+    }
     try:
-        _tokenizer = AutoTokenizer.from_pretrained(
-            MODEL_DIR,
-            use_fast=True,
-            local_files_only=True,
-        )
-        _model = AutoModelForCausalLM.from_pretrained(
-            MODEL_DIR,
-            local_files_only=True,
-            device_map="auto" if DEVICE=="cuda" else None,
-            torch_dtype=torch.float16 if DEVICE=="cuda" else torch.float32,
-        ).to(DEVICE)
-        print("[anonymization] local LLM loaded successfully")
+        resp = requests.post(OLLAMA_URL, json=payload)
+        resp.raise_for_status()
+        # Ollama response structure: {"message": {"role": ..., "content": ...}}
+        return resp.json()["message"]["content"].strip()
     except Exception as e:
-        print(f"[anonymization] local LLM load failed: {e}")
-        _tokenizer = None
-        _model     = None
+        print(f"[!] Ollama Error: {e}")
+        return "{}"
 
-
-# ─── 3. Span detection via local LLM ────────────────────────────────────────────
-
-def detect_sensitive_spans(text: str):
-    """
-    Uses the local LLM to find every span of PII/legal data.
-    Returns a list of {"type":str, "start":int, "end":int}.
-    """
-    _ensure_local_llm()
-    if not (_tokenizer and _model):
-        return []
-
+# ---- Detection ----
+def detect_sensitive_entities(text: str) -> list[dict]:
+    """Use LLM to extract sensitive spans as JSON list of {entity, text, start, end}."""
     prompt = (
-        "You are a data-privacy assistant. Given the user’s text, identify every span of sensitive data:\n"
-        "- emails, phone numbers, IP addresses, credit cards, SSNs or national IDs\n"
-        "- person names, organizations, locations, dates\n"
-        "- clause references (e.g. “Clause 5.3”)\n"
-        "- case numbers (e.g. “Case No. 2021-CR-04567”)\n\n"
-        "Return ONLY a JSON array of objects with keys:\n"
-        "  type (string), start (int), end (int)\n\n"
-        f"Text:\n'''{text}'''"
+        f"""
+You are a privacy assistant. Extract any personal data from the text below and output a JSON list of objects with keys: entity, text, start, end.
+Entities: name, email, phone, address, credit_card, ssn
+Text:
+{text}
+"""
     )
-
-    inputs = _tokenizer(
-        prompt,
-        return_tensors="pt",
-        truncation=True,
-        max_length=1024,
-    ).to(DEVICE)
-    outputs = _model.generate(
-        **inputs,
-        max_new_tokens=512,
-        do_sample=False,
-        eos_token_id=_tokenizer.eos_token_id,
-    )
-    generated = _tokenizer.decode(outputs[0], skip_special_tokens=True)
-
-    # extract JSON array
+    llm_output = call_ollama(prompt)
     try:
-        js = generated[generated.index("["): generated.rindex("]")+1]
-        spans = json.loads(js)
-    except Exception:
+        return json.loads(llm_output)
+    except json.JSONDecodeError:
+        print("[!] Failed to parse LLM output:", llm_output)
         return []
 
-    # validate spans
-    valid = []
-    for s in spans:
-        if (
-            isinstance(s.get("type"), str)
-            and isinstance(s.get("start"), int)
-            and isinstance(s.get("end"),   int)
-            and 0 <= s["start"] < s["end"] <= len(text)
-        ):
-            valid.append(s)
-    return valid
-
-
-# ─── 4. The anonymize_text() API ────────────────────────────────────────────────
-
-def anonymize_text(text: str):
+# ---- Anonymization ----
+def anonymize_text(text: str) -> tuple[str, list[dict]]:
     """
-    1. Runs detect_sensitive_spans(text) via your local LLM.
-    2. Replaces each span with <TYPE_n> (per-type counter).
-    3. Returns (anonymized_text, mapping_list).
-    """
-    spans = detect_sensitive_spans(text)
-    # reverse sort ensures earlier replacements don’t shift later indices
-    spans = sorted(spans, key=lambda x: x["start"], reverse=True)
+1. Detect sensitive entities with the local LLM
+2. Build mapping of original→placeholder
+3. Replace spans in reverse order
+4. Return anonymized text + mapping list
+"""
+    # 1. Detect
+    detected = detect_sensitive_entities(text)
 
-    existing, counters, mapping = {}, defaultdict(int), []
-    out = text
+    # 2. Prepare mapping containers
+    existing = {}                  # key: (orig, entity) -> placeholder
+    counters = defaultdict(int)
+    mapping: list[dict] = []       # list of {type, original, anonymized}
 
-    for span in spans:
-        typ, start, end = span["type"], span["start"], span["end"]
-        orig = out[start:end]
-        key  = (orig, typ)
-
+    # 3. Sort spans backwards and replace
+    anonymized = text
+    for ent in sorted(detected, key=lambda e: e["start"], reverse=True):
+        orig = anonymized[ent["start"]:ent["end"]]
+        key = (orig, ent["entity"])
         if key not in existing:
-            counters[typ] += 1
-            token = f"<{typ}_{counters[typ]}>"
-            existing[key] = token
+            counters[ent["entity"]] += 1
+            placeholder = f"<{ent['entity'].upper()}_{counters[ent['entity']]}>{}"  # e.g. <EMAIL_1>
+            existing[key] = placeholder
             mapping.append({
-                "type":       typ,
-                "original":   orig,
-                "anonymized": token
+                "type": ent["entity"],
+                "original": orig,
+                "anonymized": placeholder
             })
         else:
-            token = existing[key]
+            placeholder = existing[key]
+        # Replace in text
+        start, end = ent["start"], ent["end"]
+        anonymized = anonymized[:start] + placeholder + anonymized[end:]
 
-        out = out[:start] + token + out[end:]
-
-    return out, mapping
-
-if __name__ == "__main__":
-    """
-    When you run `python anonymization.py` from the shell,
-    this block will download & cache the model and exit.
-    """
-    try:
-        _ensure_local_llm()
-        print("[anonymization] build-time download complete")
-        exit(0)
-    except Exception as e:
-        print(f"[anonymization] build-time error: {e}")
-        exit(1)
-
+    return anonymized, mapping
