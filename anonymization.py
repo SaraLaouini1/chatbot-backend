@@ -43,6 +43,8 @@ def detect_sensitive_entities(text: str) -> list[dict]:
         f"  • ssn\n\n"
         f"Text:\n{text}\n\n"
         f"Return ONLY the raw JSON list."
+        f"Return each as JSON in the format:"
+        f"[{"entity": "email", "text": "jack@gmail.com", "start": 12, "end": 24}, ...]"
     )
     llm_output = call_ollama(prompt)
     try:
