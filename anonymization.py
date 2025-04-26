@@ -4,11 +4,10 @@ from collections import defaultdict
 import os
 
 
-# Build Ollama URL from env
-OLLAMA_HOST  = os.getenv("OLLAMA_HOST", "127.0.0.1")
-OLLAMA_PORT  = os.getenv("OLLAMA_PORT", "11434")
-OLLAMA_URL   = f"http://{OLLAMA_HOST}:{OLLAMA_PORT}/api/generate"
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "mistral:latest")
+# Build the full internal URL from the single env var:
+SERVICE_ADDR   = os.getenv("OLLAMA_SERVICE_ADDRESS")
+OLLAMA_URL     = f"http://{SERVICE_ADDR}/api/generate"
+OLLAMA_MODEL   = os.getenv("OLLAMA_MODEL", "mistral:latest")
 
 def call_ollama(prompt: str) -> str:
     payload = {
@@ -16,9 +15,14 @@ def call_ollama(prompt: str) -> str:
         "prompt": prompt,
         "stream": False
     }
-    resp = requests.post(OLLAMA_URL, json=payload, timeout=10)
-    resp.raise_for_status()
-    return resp.json()["choices"][0]["text"].strip()
+    try:
+        resp = requests.post(OLLAMA_URL, json=payload, timeout=10)
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["text"].strip()
+    except Exception as e:
+        print(f"[!] Ollama Error contacting {OLLAMA_URL}: {e}")
+        return "{}"
+
 
 # ---- Detection ----
 def detect_sensitive_entities(text: str) -> list[dict]:
