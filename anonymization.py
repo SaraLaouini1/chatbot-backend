@@ -2,27 +2,21 @@ import requests
 import json
 from collections import defaultdict
 
-# ---- Configuration ----
-OLLAMA_URL   = "http://127.0.0.1:11434/api/generate"
-OLLAMA_MODEL = "mistral:latest"  # Change if you’ve pulled another tag
+# Build Ollama URL from env
+OLLAMA_HOST  = os.getenv("OLLAMA_HOST", "127.0.0.1")
+OLLAMA_PORT  = os.getenv("OLLAMA_PORT", "11434")
+OLLAMA_URL   = f"http://{OLLAMA_HOST}:{OLLAMA_PORT}/api/generate"
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "mistral:latest")
 
-# ---- LLM Call ----
 def call_ollama(prompt: str) -> str:
-    """
-    Send a single-prompt completion to the local Ollama server.
-    """
     payload = {
-        "model": OLLAMA_MODEL,
-        "prompt": prompt
+        "model":  OLLAMA_MODEL,
+        "prompt": prompt,
+        "stream": False
     }
-    try:
-        resp = requests.post(OLLAMA_URL, json=payload)
-        resp.raise_for_status()
-        # Ollama’s /api/generate returns {"id":..., "object":..., "choices":[{"text": "..."}], ...}
-        return resp.json()["choices"][0]["text"].strip()
-    except Exception as e:
-        print(f"[!] Ollama Error: {e}")
-        return "{}"
+    resp = requests.post(OLLAMA_URL, json=payload, timeout=10)
+    resp.raise_for_status()
+    return resp.json()["choices"][0]["text"].strip()
 
 # ---- Detection ----
 def detect_sensitive_entities(text: str) -> list[dict]:
