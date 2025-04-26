@@ -31,9 +31,16 @@ def detect_sensitive_entities(text: str) -> list[dict]:
     { entity, text, start, end }.
     """
     prompt = (
-        f"You are a privacy assistant. Extract any personal data from the text below\n"
+        f"You are a privacy assistant. Extract any sensitive items from the text below\n"
         f"and output a JSON list of objects with keys: entity, text, start, end.\n"
-        f"Entities: name, email, phone, address, credit_card, ssn\n\n"
+        f"Entities to detect:\n"
+        f"  • name (person full names)\n"
+        f"  • date (any dates, e.g. 2026-06-30)\n"
+        f"  • email\n"
+        f"  • phone\n"
+        f"  • address\n"
+        f"  • credit_card\n"
+        f"  • ssn\n\n"
         f"Text:\n{text}\n\n"
         f"Return ONLY the raw JSON list."
     )
