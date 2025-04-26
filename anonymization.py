@@ -1,6 +1,8 @@
 import requests
 import json
 from collections import defaultdict
+import os
+
 
 # Build Ollama URL from env
 OLLAMA_HOST  = os.getenv("OLLAMA_HOST", "127.0.0.1")
