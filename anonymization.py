@@ -29,11 +29,9 @@ def call_ollama(text: str) -> str:
         resp = requests.post(OLLAMA_URL, json=payload, timeout=60)
         resp.raise_for_status()
         data = resp.json()
-        # Ollama /api/generate uses "choices"[{"text": ...}]
-        return data["choices"][0]["text"].strip()
+        return data.get("response", "").strip()
     except Exception as e:
         print(f"[!] Ollama Error contacting {OLLAMA_URL}: {e}")
-        # Guaranteed valid JSON fallback
         return "[]"
 
 def detect_sensitive_entities(text: str) -> list[dict]:
