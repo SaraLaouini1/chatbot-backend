@@ -14,11 +14,20 @@ def call_ollama(text: str) -> str:
     a strict instruction to output ONLY a JSON list of entities.
     """
     instruction = (
-        "You are a privacy assistant. Extract all sensitive data from the text "
-        "below and RETURN ONLY a JSON array of objects with keys: entity, text, start, end. "
-        "Do NOT include any explanation, headings, code fences, or anything else—"
-        "just the raw JSON array.\n\n"
-        f"Text:\n{text}"
+        "You are a privacy assistant. Extract ALL sensitive entities from this text.\n"
+        "RETURN ONLY A VALID JSON ARRAY of objects with EXACTLY these keys:\n"
+        "- entity (string, type: PERSON, EMAIL, PHONE, CREDIT_CARD, etc.)\n"
+        "- text (exact matched text)\n"
+        "- start (integer start index)\n"
+        "- end (integer end index)\n"
+        "FORMAT EXAMPLE:\n"
+        "[{\"entity\": \"EMAIL\", \"text\": \"user@example.com\", \"start\": 42, \"end\": 58}]\n"
+        "DIRECTIVES:\n"
+        "- No explanations\n"
+        "- No markdown/code formatting\n"
+        "- Validate JSON syntax\n"
+        "- Only include complete, verified matches\n"
+        f"TEXT TO ANALYZE:\n{text}"
     )
     payload = {
         "model":  OLLAMA_MODEL,
@@ -36,14 +45,33 @@ def call_ollama(text: str) -> str:
 
 def detect_sensitive_entities(text: str) -> list[dict]:
     """
-    Ask the LLM to locate sensitive spans and return a JSON list of
-    { entity, text, start, end }.
+    Add JSON sanitization and validation
     """
     llm_output = call_ollama(text)
+    
+    # Attempt to extract JSON from markdown code blocks
+    if llm_output.startswith("```json"):
+        llm_output = llm_output[7:-3].strip()  # Remove ```json and trailing ```
+    
     try:
-        return json.loads(llm_output)
+        parsed = json.loads(llm_output)
+        # Validate structure
+        if not isinstance(parsed, list):
+            return []
+            
+        valid_entries = []
+        for entry in parsed:
+            if all(key in entry for key in ("entity", "text", "start", "end")):
+                valid_entries.append({
+                    "entity": str(entry["entity"]),
+                    "text": str(entry["text"]),
+                    "start": int(entry["start"]),
+                    "end": int(entry["end"])
+                })
+        return valid_entries
+        
     except json.JSONDecodeError:
-        print("[!] Failed to parse LLM JSON:", llm_output)
+        print(f"[!] Failed to parse LLM JSON. Raw output:\n{llm_output[:200]}...")
         return []
 
 def anonymize_text(text: str) -> tuple[str, list[dict]]:
