@@ -1,65 +1,53 @@
 import requests
 import json
-from collections import defaultdict
 import os
+from collections import defaultdict
 
-# Build the full internal URL from the single env var:
+# Build the Ollama completions URL
 SERVICE_ADDR = os.getenv("OLLAMA_SERVICE_ADDRESS")
-OLLAMA_URL = f"http://{SERVICE_ADDR}/api/generate"  # We'll replace /api/generate to /api/chat inside the function
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
+OLLAMA_URL   = f"http://{SERVICE_ADDR}/api/generate"
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "smollm:360m")
 
-def call_ollama(prompt: str) -> str:
+def call_ollama(text: str) -> str:
     """
-    Send a chat-style request to the Ollama server and return the assistant's reply.
+    Send a completion request to the Ollama /api/generate endpoint with
+    a strict instruction to output ONLY a JSON list of entities.
     """
-    chat_url = OLLAMA_URL.replace("/api/generate", "/api/chat")
+    instruction = (
+        "You are a privacy assistant. Extract all sensitive data from the text "
+        "below and RETURN ONLY a JSON array of objects with keys: entity, text, start, end. "
+        "Do NOT include any explanation, headings, code fences, or anything else—"
+        "just the raw JSON array.\n\n"
+        f"Text:\n{text}"
+    )
     payload = {
-        "model": OLLAMA_MODEL,
-        "messages": [
-            {"role": "system", "content": "You are a privacy assistant. Only output JSON lists."},
-            {"role": "user", "content": prompt}
-        ],
+        "model":  OLLAMA_MODEL,
+        "prompt": instruction,
         "stream": False
     }
     try:
-        resp = requests.post(chat_url, json=payload, timeout=60)
+        resp = requests.post(OLLAMA_URL, json=payload, timeout=60)
         resp.raise_for_status()
         data = resp.json()
-        return data.get("message", {}).get("content", "").strip()
+        # Ollama /api/generate uses "choices"[{"text": ...}]
+        return data["choices"][0]["text"].strip()
     except Exception as e:
-        print(f"[!] Ollama Error contacting {chat_url}: {e}")
-        return "{}"
+        print(f"[!] Ollama Error contacting {OLLAMA_URL}: {e}")
+        # Guaranteed valid JSON fallback
+        return "[]"
 
-# ---- Detection ----
 def detect_sensitive_entities(text: str) -> list[dict]:
     """
     Ask the LLM to locate sensitive spans and return a JSON list of
     { entity, text, start, end }.
     """
-    prompt = (
-        f"You are a privacy assistant. Extract any sensitive items from the text below\n"
-        f"and output a JSON list of objects with keys: entity, text, start, end.\n"
-        f"Entities to detect:\n"
-        f"  • name (person full names)\n"
-        f"  • date (any dates, e.g. 2026-06-30)\n"
-        f"  • email\n"
-        f"  • phone\n"
-        f"  • address\n"
-        f"  • credit_card\n"
-        f"  • ssn\n\n"
-        f"Text:\n{text}\n\n"
-        f"Return ONLY the raw JSON list.\n"
-        f"Example format:\n"
-        f'[{{"entity": "email", "text": "jack@gmail.com", "start": 12, "end": 24}}]'
-    )
-    llm_output = call_ollama(prompt)
+    llm_output = call_ollama(text)
     try:
         return json.loads(llm_output)
     except json.JSONDecodeError:
         print("[!] Failed to parse LLM JSON:", llm_output)
         return []
 
-# ---- Anonymization ----
 def anonymize_text(text: str) -> tuple[str, list[dict]]:
     """
     1. Detect sensitive entities via local LLM
@@ -69,12 +57,11 @@ def anonymize_text(text: str) -> tuple[str, list[dict]]:
     """
     detected = detect_sensitive_entities(text)
 
-    existing = {}  # (orig, entity) → placeholder
+    existing = {}                    # (orig, entity) → placeholder
     counters = defaultdict(int)
-    mapping = []  # list of {type, original, anonymized}
+    mapping = []                     # list of {type, original, anonymized}
 
     anonymized = text
-    # Reverse-sort so earlier replacements don’t shift later spans
     for ent in sorted(detected, key=lambda e: e["start"], reverse=True):
         start, end = ent["start"], ent["end"]
         orig = anonymized[start:end]
@@ -85,8 +72,8 @@ def anonymize_text(text: str) -> tuple[str, list[dict]]:
             placeholder = f"<{ent['entity'].upper()}_{counters[ent['entity']]}>"
             existing[key] = placeholder
             mapping.append({
-                "type": ent["entity"],
-                "original": orig,
+                "type":       ent["entity"],
+                "original":   orig,
                 "anonymized": placeholder
             })
         else:
