@@ -35,7 +35,7 @@ def call_ollama(text: str) -> str:
         "stream": False
     }
     try:
-        resp = requests.post(OLLAMA_URL, json=payload, timeout=60)
+        resp = requests.post(OLLAMA_URL, json=payload, timeout=300)
         resp.raise_for_status()
         data = resp.json()
         return data.get("response", "").strip()
