@@ -7,7 +7,7 @@ import os
 # Build the full internal URL from the single env var:
 SERVICE_ADDR   = os.getenv("OLLAMA_SERVICE_ADDRESS")
 OLLAMA_URL     = f"http://{SERVICE_ADDR}/api/generate"
-OLLAMA_MODEL   = os.getenv("OLLAMA_MODEL", "mistral:latest")
+OLLAMA_MODEL   = os.getenv("OLLAMA_MODEL", "mistral:3B-instruct")
 
 def call_ollama(prompt: str) -> str:
     payload = {
