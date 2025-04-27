@@ -16,7 +16,7 @@ def call_ollama(prompt: str) -> str:
         "stream": False
     }
     try:
-        resp = requests.post(OLLAMA_URL, json=payload, timeout=10)
+        resp = requests.post(OLLAMA_URL, json=payload, timeout=60)
         resp.raise_for_status()
         return resp.json()["choices"][0]["text"].strip()
     except Exception as e:
