@@ -1,97 +1,94 @@
-import requests
-import json
 import os
+import json
+import requests
 from collections import defaultdict
 
-# Build the Ollama completions URL
-SERVICE_ADDR = os.getenv("OLLAMA_SERVICE_ADDRESS")
-OLLAMA_URL   = f"http://{SERVICE_ADDR}/api/generate"
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "smollm:360m")
+# Endpoints
+SERVICE_ADDR    = os.getenv("OLLAMA_SERVICE_ADDRESS")
+OLLAMA_CHAT_URL = f"http://{SERVICE_ADDR}/api/chat"
+OLLAMA_GEN_URL  = f"http://{SERVICE_ADDR}/api/generate"
+OLLAMA_MODEL    = os.getenv("OLLAMA_MODEL", "smollm:360m")
 
-def call_ollama(text: str) -> str:
-    """
-    Send a completion request to the Ollama /api/generate endpoint with
-    a strict instruction to output ONLY a JSON list of entities.
-    """
-    instruction = (
-        "You are a privacy assistant. Extract ALL sensitive entities from this text.\n"
-        "RETURN ONLY A VALID JSON ARRAY of objects with EXACTLY these keys:\n"
-        "- entity (string, type: PERSON, EMAIL, PHONE, CREDIT_CARD, etc.)\n"
-        "- text (exact matched text)\n"
-        "- start (integer start index)\n"
-        "- end (integer end index)\n"
-        "FORMAT EXAMPLE:\n"
-        "[{\"entity\": \"EMAIL\", \"text\": \"user@example.com\", \"start\": 42, \"end\": 58}]\n"
-        "DIRECTIVES:\n"
-        "- No explanations\n"
-        "- No markdown/code formatting\n"
-        "- Validate JSON syntax\n"
-        "- Only include complete, verified matches\n"
-        f"TEXT TO ANALYZE:\n{text}"
-    )
-    payload = {
-        "model":  OLLAMA_MODEL,
-        "prompt": instruction,
+def call_ollama(prompt: str) -> str:
+    # 1️⃣ Try chat API
+    chat_payload = {
+        "model":    OLLAMA_MODEL,
+        "messages": [
+            {"role":"system",  "content":"You are a privacy assistant. Return ONLY a JSON array of {entity,text,start,end}."},
+            {"role":"user",    "content": prompt}
+        ],
         "stream": False
     }
     try:
-        resp = requests.post(OLLAMA_URL, json=payload, timeout=300)
-        resp.raise_for_status()
-        data = resp.json()
-        return data.get("response", "").strip()
-    except Exception as e:
-        print(f"[!] Ollama Error contacting {OLLAMA_URL}: {e}")
-        return "[]"
+        r = requests.post(OLLAMA_CHAT_URL, json=chat_payload, timeout=60)
+        r.raise_for_status()
+        msg = r.json().get("message", {}).get("content", "")
+        if msg:
+            return msg.strip()
+    except Exception:
+        pass
+
+    # 2️⃣ Fallback to completion API
+    gen_payload = {
+        "model":  OLLAMA_MODEL,
+        "prompt": (
+            "You are a privacy assistant. Extract ALL sensitive entities from the text below "
+            "and RETURN ONLY a VALID JSON ARRAY of objects with keys: entity, text, start, end.\n\n"
+            f"{prompt}"
+        ),
+        "stream": False
+    }
+    try:
+        r = requests.post(OLLAMA_GEN_URL, json=gen_payload, timeout=60)
+        r.raise_for_status()
+        choices = r.json().get("choices", [])
+        if choices:
+            return choices[0]["text"].strip()
+    except Exception:
+        pass
+
+    # 3️⃣ Safe fallback
+    return "[]"
 
 def detect_sensitive_entities(text: str) -> list[dict]:
-    """
-    Add JSON sanitization and validation
-    """
-    llm_output = call_ollama(text)
-    
-    # Attempt to extract JSON from markdown code blocks
-    if llm_output.startswith("```json"):
-        llm_output = llm_output[7:-3].strip()  # Remove ```json and trailing ```
-    
+    raw = call_ollama(text)
+
+    # Strip code fences if any
+    if raw.startswith("```"):
+        parts = raw.split("```", 2)
+        if len(parts) == 3:
+            raw = parts[2].strip()
+
     try:
-        parsed = json.loads(llm_output)
-        # Validate structure
-        if not isinstance(parsed, list):
+        data = json.loads(raw)
+        if not isinstance(data, list):
             return []
-            
-        valid_entries = []
-        for entry in parsed:
-            if all(key in entry for key in ("entity", "text", "start", "end")):
-                valid_entries.append({
-                    "entity": str(entry["entity"]),
-                    "text": str(entry["text"]),
-                    "start": int(entry["start"]),
-                    "end": int(entry["end"])
+        out = []
+        for ent in data:
+            if all(k in ent for k in ("entity","text","start","end")):
+                out.append({
+                    "entity": str(ent["entity"]),
+                    "text":   str(ent["text"]),
+                    "start":  int(ent["start"]),
+                    "end":    int(ent["end"])
                 })
-        return valid_entries
-        
+        return out
     except json.JSONDecodeError:
-        print(f"[!] Failed to parse LLM JSON. Raw output:\n{llm_output[:200]}...")
+        print("[!] Failed to parse LLM JSON. Raw output:\n", raw)
         return []
 
 def anonymize_text(text: str) -> tuple[str, list[dict]]:
-    """
-    1. Detect sensitive entities via local LLM
-    2. Build mapping of original→placeholder
-    3. Replace spans back-to-front to preserve offsets
-    4. Return (anonymized_text, mapping_list)
-    """
     detected = detect_sensitive_entities(text)
-
-    existing = {}                    # (orig, entity) → placeholder
+    existing = {}
     counters = defaultdict(int)
-    mapping = []                     # list of {type, original, anonymized}
-
+    mapping = []
     anonymized = text
+
+    # Replace spans back-to-front so indices stay valid
     for ent in sorted(detected, key=lambda e: e["start"], reverse=True):
         start, end = ent["start"], ent["end"]
         orig = anonymized[start:end]
-        key = (orig, ent["entity"])
+        key  = (orig, ent["entity"])
 
         if key not in existing:
             counters[ent["entity"]] += 1
