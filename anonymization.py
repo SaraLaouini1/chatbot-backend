@@ -47,7 +47,7 @@ def call_ollama(prompt: str) -> str:
         "stream":   False
     }
 
-    r = requests.post(OLLAMA_CHAT_URL, json=payload, timeout=60)
+    r = requests.post(OLLAMA_CHAT_URL, json=payload, timeout=300)
     r.raise_for_status()
     return r.json().get("message", {}).get("content", "").strip()
 
