@@ -31,12 +31,14 @@ def call_ollama(prompt: str) -> str:
     # 2️⃣ Fallback to completion API
     gen_payload = {
         "model":  OLLAMA_MODEL,
-        "prompt": (
-            "You are a privacy assistant. Extract ALL sensitive entities from the text below "
-            "and RETURN ONLY a VALID JSON ARRAY of objects with keys: entity, text, start, end.\n\n"
-            "example of output: {"entity": "PHONE", "text": "555-1234", "start": 10, "end": 18}"
-            f"{prompt}"
-        ),
+        "prompt": f"""You are a privacy assistant. Extract ALL sensitive entities from the text below
+            and RETURN ONLY a VALID JSON ARRAY of objects with keys: entity, text, start, end.
+            
+            Example of output: {{"entity": "PHONE", "text": "555-1234", "start": 10, "end": 18}}
+            
+            Here is the text to analyze and extract sensitive data from:
+            
+            {prompt}""",
         "stream": False
     }
     try:
