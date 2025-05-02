@@ -10,49 +10,48 @@ OLLAMA_GEN_URL  = f"http://{SERVICE_ADDR}/api/generate"
 OLLAMA_MODEL    = os.getenv("OLLAMA_MODEL", "smollm:360m")
 
 def call_ollama(prompt: str) -> str:
-    # 1️⃣ Try chat API
-    chat_payload = {
+    # Few‑shot examples
+    examples = [
+        {
+            "input":  "My phone is 555-1234 and my SSN is 123-45-6789.",
+            "output": '[{"entity":"PHONE","text":"555-1234","start":13,"end":21},'
+                      '{"entity":"SSN","text":"123-45-6789","start":32,"end":43}]'
+        },
+        {
+            "input":  "Email me at alice@example.com or call 202-555-0198.",
+            "output": '[{"entity":"EMAIL","text":"alice@example.com","start":11,"end":29},'
+                      '{"entity":"PHONE","text":"202-555-0198","start":33,"end":46}]'
+        },
+    ]
+
+    # Build a chat with examples
+    messages = [
+        {
+            "role":    "system",
+            "content": (
+                "You are a privacy assistant. Extract ALL sensitive entities "
+                "and return ONLY a JSON array of {entity,text,start,end}."
+            )
+        }
+    ]
+    for ex in examples:
+        messages.append({"role": "user",      "content": ex["input"]})
+        messages.append({"role": "assistant", "content": ex["output"]})
+
+    # Finally add the real prompt
+    messages.append({"role": "user", "content": prompt})
+
+    payload = {
         "model":    OLLAMA_MODEL,
-        "messages": [
-            {"role":"system",  "content":"You are a privacy assistant. Return ONLY a JSON array of {entity,text,start,end}."},
-            {"role":"user",    "content": prompt}
-        ],
-        "stream": False
+        "messages": messages,
+        "stream":   False
     }
-    try:
-        r = requests.post(OLLAMA_CHAT_URL, json=chat_payload, timeout=60)
-        r.raise_for_status()
-        msg = r.json().get("message", {}).get("content", "")
-        if msg:
-            return msg.strip()
-    except Exception:
-        pass
 
-    # 2️⃣ Fallback to completion API
-    gen_payload = {
-        "model":  OLLAMA_MODEL,
-        "prompt": f"""You are a privacy assistant. Extract ALL sensitive entities from the text below
-            and RETURN ONLY a VALID JSON ARRAY of objects with keys: entity, text, start, end.
-            
-            Example of output: {{"entity": "PHONE", "text": "555-1234", "start": 10, "end": 18}}
-            
-            Here is the text to analyze and extract sensitive data from:
-            
-            {prompt}""",
-        "stream": False
-    }
-    try:
-        r = requests.post(OLLAMA_GEN_URL, json=gen_payload, timeout=60)
-        r.raise_for_status()
-        choices = r.json().get("choices", [])
-        if choices:
-            return choices[0]["text"].strip()
-    except Exception:
-        pass
+    r = requests.post(OLLAMA_CHAT_URL, json=payload, timeout=60)
+    r.raise_for_status()
+    return r.json().get("message", {}).get("content", "").strip()
 
-    # 3️⃣ Safe fallback
-    return "[]"
-
+# (rest of anonymization.py stays unchanged)
 def detect_sensitive_entities(text: str) -> list[dict]:
     raw = call_ollama(text)
 
