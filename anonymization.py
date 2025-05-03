@@ -7,7 +7,7 @@ from collections import defaultdict
 SERVICE_ADDR    = os.getenv("OLLAMA_SERVICE_ADDRESS")
 OLLAMA_CHAT_URL = f"http://{SERVICE_ADDR}/api/chat"
 OLLAMA_GEN_URL  = f"http://{SERVICE_ADDR}/api/generate"
-OLLAMA_MODEL    = os.getenv("OLLAMA_MODEL", "smollm:360m")
+OLLAMA_MODEL    = os.getenv("OLLAMA_MODEL", "extractor:latest")
 
 def call_ollama(prompt: str) -> str:
     # Few‑shot examples
