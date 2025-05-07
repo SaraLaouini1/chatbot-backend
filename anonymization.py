@@ -43,13 +43,14 @@ def call_ollama(prompt: str) -> str:
 
     payload = {
         "model":    OLLAMA_MODEL,
-        "messages": messages,
+        "messages": prompt,
         "stream":   False
     }
 
-    r = requests.post(OLLAMA_CHAT_URL, json=payload, timeout=60)
+    r = requests.post(OLLAMA_GEN_URL, json=payload, timeout=60)
     r.raise_for_status()
-    return r.json().get("message", {}).get("content", "").strip()
+    #return r.json().get("message", {}).get("content", "").strip()
+    return r.json()["results"][0]["text"].strip()
 
 # (rest of anonymization.py stays unchanged)
 def detect_sensitive_entities(text: str) -> list[dict]:
