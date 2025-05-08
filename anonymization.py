@@ -3,14 +3,18 @@ import json
 import requests
 from collections import defaultdict
 
-# Endpoints
-SERVICE_ADDR    = os.getenv("OLLAMA_SERVICE_ADDRESS")
-OLLAMA_CHAT_URL = f"http://{SERVICE_ADDR}/api/chat"
-OLLAMA_GEN_URL  = f"http://{SERVICE_ADDR}/api/generate"
-OLLAMA_MODEL    = os.getenv("OLLAMA_MODEL", "extractor:latest")
+# Endpoint (generate only)
+SERVICE_ADDR   = os.getenv("OLLAMA_SERVICE_ADDRESS", "localhost:11434")
+OLLAMA_GEN_URL = f"http://{SERVICE_ADDR}/api/generate"
+OLLAMA_MODEL   = os.getenv("OLLAMA_MODEL", "extractor:latest")
 
-def call_ollama(prompt: str) -> str:
-    # Few‑shot examples
+def call_ollama(text: str) -> str:
+    """
+    Send a single-prompt generate call to Ollama,
+    including few‑shot examples and the real text.
+    """
+
+    # System instructions + few‑shot examples as one big prompt
     examples = [
         {
             "input":  "My phone is 555-1234 and my SSN is 123-45-6789.",
@@ -24,35 +28,37 @@ def call_ollama(prompt: str) -> str:
         },
     ]
 
-    # Build a chat with examples
-    messages = [
-        {
-            "role":    "system",
-            "content": (
-                "You are a privacy assistant. Extract ALL sensitive entities "
-                "and return ONLY a JSON array of {entity,text,start,end}."
-            )
-        }
+    # Build the prompt text
+    prompt_lines = [
+        "You are a privacy assistant. Extract ALL sensitive entities "
+        "and return ONLY a JSON array of {entity,text,start,end}.",
+        ""
     ]
     for ex in examples:
-        messages.append({"role": "user",      "content": ex["input"]})
-        messages.append({"role": "assistant", "content": ex["output"]})
+        prompt_lines.append(f"Input:  {ex['input']}")
+        prompt_lines.append(f"Output: {ex['output']}")
+        prompt_lines.append("")  # blank line between examples
 
-    # Finally add the real prompt
-    messages.append({"role": "user", "content": prompt})
+    prompt_lines.append(f"Input:  {text}")
+    prompt_lines.append("Output:")
+    full_prompt = "\n".join(prompt_lines)
 
+    # Call Ollama generate
     payload = {
-        "model":    OLLAMA_MODEL,
-        "messages": prompt,
-        "stream":   False
+        "model":  OLLAMA_MODEL,
+        "prompt": full_prompt,
+        "stream": False,
     }
-
     r = requests.post(OLLAMA_GEN_URL, json=payload, timeout=60)
     r.raise_for_status()
-    #return r.json().get("message", {}).get("content", "").strip()
-    return r.json()["results"][0]["text"].strip()
 
-# (rest of anonymization.py stays unchanged)
+    # Ollama generate returns either {"response": "..."} or {"results":[{"text":"..."}]}
+    resp = r.json()
+    if "response" in resp:
+        return resp["response"].strip()
+    return resp["results"][0]["text"].strip()
+
+
 def detect_sensitive_entities(text: str) -> list[dict]:
     raw = call_ollama(text)
 
@@ -79,6 +85,7 @@ def detect_sensitive_entities(text: str) -> list[dict]:
     except json.JSONDecodeError:
         print("[!] Failed to parse LLM JSON. Raw output:\n", raw)
         return []
+
 
 def anonymize_text(text: str) -> tuple[str, list[dict]]:
     detected = detect_sensitive_entities(text)
