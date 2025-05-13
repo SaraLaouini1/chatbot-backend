@@ -5,7 +5,7 @@ from collections import defaultdict
 
 # Endpoint (generate only)
 SERVICE_ADDR   = os.getenv("OLLAMA_SERVICE_ADDRESS", "localhost:11434")
-OLLAMA_GEN_URL = f"http://{SERVICE_ADDR}/generate"
+OLLAMA_GEN_URL = f"http://{SERVICE_ADDR}/api/generate"
 OLLAMA_MODEL   = os.getenv("OLLAMA_MODEL", "extractor:latest")
 
 def call_ollama(text: str) -> str:
